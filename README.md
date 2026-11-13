@@ -45,10 +45,10 @@ The commands below use the Windows launcher `py -3.12`; on Linux or macOS use `p
 
 ```bash
 pip install -r toolkit/requirements.txt
-python toolkit/app.py            # open http://127.0.0.1:7860
+python toolkit/app.py            # opens http://localhost:8501
 ```
 
-Upload a skull-stripped T1 NIfTI and choose CNN3D or the Spherical Transformer. The app shows the rays, the spherical shells, the per-seed model output and, optionally, Grad-CAM. It runs locally and is for research use only; see [toolkit/README.md](toolkit/README.md).
+Upload a skull-stripped T1 NIfTI and choose CNN3D or the Spherical Transformer. The app shows the rays in 3-D, the spherical shells, the per-seed model output and, optionally, Grad-CAM. It runs locally and is for research use only; see [toolkit/README.md](toolkit/README.md).
 
 ## Reproducing the experiments
 

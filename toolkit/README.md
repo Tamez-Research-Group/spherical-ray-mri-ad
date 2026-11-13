@@ -3,7 +3,7 @@
 A local web app and command-line tool for trying the paper's pipeline on your own scans. Upload a skull-stripped T1-weighted MRI and choose a model. The toolkit then:
 
 1. runs the paper's harmonization (N4 bias-field correction, 1.2 mm isotropic resampling) and spherical ray transform (36 × 72 × 48 tensor);
-2. shows the rays cast from the subject's centre of mass to the smoothed brain edge, on the subject's own axial, coronal and sagittal slices;
+2. shows the rays cast from the subject's centre of mass to the smoothed brain edge, as an interactive 3-D view and on the subject's own axial, coronal and sagittal slices;
 3. shows the spherical tensor as unwrapped shells (one per radius, with a slider) and as interactive 3-D shells;
 4. returns the output of the CNN3D or the Spherical Transformer for each of the 5 training seeds, each compared with that seed's validation threshold, plus a majority vote;
 5. optionally shows Grad-CAM of the Dementia logit on the shells and the unwrapped maps.
@@ -27,10 +27,10 @@ A GPU is optional. On a CPU, processing one scan takes a few seconds and a 5-see
 ## Web app
 
 ```bash
-python toolkit/app.py            # open http://127.0.0.1:7860
+python toolkit/app.py            # opens http://localhost:8501
 ```
 
-By default the app listens only on this computer (`--host 127.0.0.1`), so uploaded scans never leave the machine.
+The app is built with [Streamlit](https://streamlit.io). `python toolkit/app.py` starts it so that it listens only on this computer, with Streamlit's usage statistics switched off; uploaded scans never leave the machine. (`streamlit run toolkit/app.py` also works but uses Streamlit's default settings.)
 
 | Control | Options |
 |---|---|
@@ -41,9 +41,10 @@ By default the app listens only on this computer (`--host 127.0.0.1`), so upload
 
 | Tab | Shows |
 |---|---|
-| Result | Model output, per-seed probabilities and thresholds, input checks, and the spherical tensor as `.npy` for download |
-| Rays | Rays and the smoothed edge R_edge on the harmonized volume, and the tensor's samples drawn back into the brain |
+| Result | Model output, per-seed probabilities and thresholds, input checks; download the spherical tensor (`.npy`) and the per-seed output (`.csv`) |
+| Rays | Interactive 3-D rays, ray ends and the edge surface R_edge with orthogonal slices (adjustable density); the same on 2-D slices; the tensor's samples drawn back into the brain |
 | Spherical tensor | One shell r / R_edge at a time as an elevation × azimuth map (with optional Grad-CAM), and the mean radial profile |
+| About | Method summary and citation |
 | 3-D shells | Interactive shells at chosen fractions of R_edge, coloured by intensity or Grad-CAM, with an optional cut-away |
 
 ## Command line
