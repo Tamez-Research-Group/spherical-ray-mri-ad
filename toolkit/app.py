@@ -143,11 +143,13 @@ with st.sidebar:
         elif source == "phantom":
             atrophy = st.slider("Phantom atrophy", 0.0, 1.0, 0.0, 0.1,
                                 help="Enlarges the ventricles and sulci and thins the cortex.")
-        model = st.selectbox("Model", list(MODELS), format_func=MODELS.get)
+        model = st.selectbox("Model", list(MODELS), format_func=MODELS.get,
+                             help="CNN3D gave the best results in the paper.")
         weights = st.selectbox("Weights", list(WEIGHTS), format_func=WEIGHTS.get,
-                               help="Best epoch is the paper's primary analysis.")
-        seed_opt = st.selectbox("Training seeds", ["all"] + [str(s) for s in P.SEEDS],
-                                format_func=lambda s: "All 5 (majority vote)" if s == "all" else f"Seed {s}")
+                               help="Best epoch is the paper's main analysis; top-5 average is an alternative.")
+        seed_opt = st.selectbox("Training runs", ["all"] + [str(s) for s in P.SEEDS],
+                                format_func=lambda s: "All 5 (majority vote)" if s == "all" else f"Run {s}",
+                                help="Each network was trained five times with different random starts.")
         run = st.form_submit_button("Analyze", type="primary", use_container_width=True)
     st.caption(DISCLAIMER)
     st.caption("Scans are processed on this computer only.")
@@ -156,8 +158,8 @@ seeds = P.SEEDS if seed_opt == "all" else (int(seed_opt),)
 settings = (source, up.name if up else None, atrophy, model, weights, seeds)
 
 st.title("Spherical-ray MRI")
-st.markdown("<p class='sub'>Registration-free spherical representation of structural MRI · "
-            "CN vs Dementia models trained on ADNI</p>", unsafe_allow_html=True)
+st.markdown("<p class='sub'>Brain MRI analysis without template alignment · research models trained on "
+            "ADNI (cognitively normal vs Dementia)</p>", unsafe_allow_html=True)
 
 
 # ── analysis (only when Analyze is pressed) ──────────────────────────────────
@@ -197,10 +199,10 @@ res = st.session_state.get("result")
 if res is None:
     c1, c2, c3, c4 = st.columns(4)
     for col, (head, body) in zip((c1, c2, c3, c4), (
-            ("1. Harmonize", "N4 bias-field correction and 1.2 mm resampling."),
-            ("2. Cast rays", "From the brain's centre of mass to its smoothed edge, in 36 × 72 directions."),
-            ("3. Sample", "48 points per ray give a 36 × 72 × 48 spherical tensor."),
-            ("4. Classify", "CNN3D or Spherical Transformer, five training seeds."))):
+            ("1. Prepare", "Corrects scanner brightness variations and resamples to 1.2 mm."),
+            ("2. Cast rays", "Lines from the centre of the brain to its outer edge, in 2,592 directions."),
+            ("3. Sample", "48 points along every ray summarise the brain."),
+            ("4. Classify", "Two networks trained on ADNI compare the scan with CN and Dementia."))):
         col.markdown(f"**{head}**  \n<span class='note'>{body}</span>", unsafe_allow_html=True)
     st.info("Choose an input in the sidebar and press Analyze.")
     st.stop()
@@ -213,124 +215,202 @@ Tn, geo = subj.tensor, subj.geometry
 s = P.summarize(df)
 is_tf = res["model"] == "transformer"
 
-tabs = st.tabs(["Summary", "Group comparison", "Grad-CAM", "Rays", "Spherical tensor", "3-D shells", "About"])
+INFO = {
+    "output": """
+**What the model concluded.** Each of the five training runs ("seeds") of the selected network gives a
+probability that the scan belongs to the Dementia group. That probability is compared with a cut-off chosen
+on separate ADNI participants. The result shown is the majority of the five decisions.
 
-# Summary
-with tabs[0]:
+The models only know cognitively normal (CN) and Dementia participants from ADNI. They were not trained on
+MCI or other conditions. This is a research tool, not a diagnosis.""",
+    "seeds": """
+**One row per training run.** *P(Dementia)* is the model's probability. *Threshold* is the cut-off for that
+run, chosen on ADNI validation participants. *Call* is Dementia when the probability is at or above the
+threshold.""",
+    "groups": """
+**This scan next to the ADNI groups.** Each map shows one "shell", the set of points at the same relative
+depth along every ray (for example 30% of the way from the centre to the edge). The map is unrolled like a
+world map: left to right goes around the head (Right, Anterior, Left, Posterior), bottom to top goes from
+inferior to superior.
+
+*Top row*: the average of ADNI cognitively normal (CN) participants, the average of ADNI Dementia
+participants, and this scan. All three come from the same scanner protocol as the scan.
+
+*Bottom row, left*: where Dementia brains typically differ from CN brains. *Bottom row, right*: where this
+scan differs from the CN average. Red means darker than normal, blue brighter than normal. Areas that are
+red in both maps are where this scan departs from normal in the way dementia typically does.""",
+    "score": """
+**Similarity to the dementia pattern.** Does this scan differ from a normal brain in the same places, and in
+the same direction, as dementia brains typically do? Near 0 means no resemblance. A positive value means it
+resembles the dementia pattern; a negative value means the opposite.
+
+The curves show where this number falls for ADNI participants who were not used to build the averages:
+blue for CN, red for Dementia. On those participants it separates the two groups with an AUC of
+{auc:.2f}. It is a visual aid, not the model's decision.""",
+    "views": """
+**The three standard views** through the centre of the brain:
+
+- *Brain*: the scan, with its outer edge (orange) and centre (dot) as used by the method.
+- *Typical dementia pattern*: where ADNI Dementia brains differ from CN brains on average, drawn on this
+  brain. Red means darker in dementia; the strongest signal is around the enlarged ventricles.
+- *This scan vs normal*: where this scan is darker (red) or brighter (blue) than the CN average. Small
+  differences are hidden. Scattered stripes in the cortex are mostly individual anatomy, not disease.
+- *Spherical sampling*: the values the networks actually see, drawn back where they were sampled.""",
+    "rays": """
+**Rays.** The method needs no alignment to a template brain. Instead it finds the centre of this brain and
+casts rays outward to the brain's smoothed outer edge, in 36 × 72 directions. It reads 48 values along
+each ray. Drag to rotate and scroll to zoom.
+
+With *Model attention* selected, each ray is coloured by how strongly the regions along it pushed the
+model towards Dementia: yellow is strong, dark purple weak. Rays pointing almost straight up or down are
+grey because the brain edge is unreliable there.""",
+    "slices": """
+**Slices through the centre of the brain**, with the rays that lie in each plane. With *Model attention*,
+the colour shows the regions that most increased the Dementia output. Attention marks where the model
+looked, not where tissue is abnormal. Compare it with *This scan vs normal* in the ADNI comparison.""",
+    "attention": """
+**Where the model looked.**
+
+*Attention by direction*: each pixel is one ray direction, unrolled like a world map. Grey bands are the
+near-vertical rays, which are left out.
+
+*Attention by depth*: for the 5% most important rays, how attention changes from the centre of the brain
+(left) to its edge (right). Attention concentrated in the outer few percent would suggest the model relies
+on the brain outline rather than on internal structure.
+
+The map comes from the network's last layer, so it marks broad regions rather than specific structures.""",
+    "shells": """
+**Shells.** All points at the same relative depth along every ray form a closed surface shaped like this
+brain: 30% of the way out is a small inner shell, 90% is close to the cortex. Colour the shells by image
+intensity, by model attention, or by difference from the CN average (red: darker than normal). Without the
+cut-away, the outer shells are see-through so the inner ones stay visible.""",
+}
+
+
+def heading(title, info):
+    c1, c2 = st.columns([24, 1], vertical_alignment="center")
+    c1.markdown(f"##### {title}")
+    with c2.popover("", icon=":material/info:"):
+        st.markdown(info)
+
+
+SECTIONS = ["Summary", "Comparison with ADNI groups", "Rays and attention", "3-D shells", "About"]
+sec = st.segmented_control("Section", SECTIONS, default=SECTIONS[0], key="section_ctl",
+                           label_visibility="collapsed")
+if sec is None:                                   # clicking the active option deselects it
+    sec = st.session_state.get("last_section", SECTIONS[0])
+st.session_state.last_section = sec
+
+if sec == "Summary":
     accent = "#d97706" if s["call"] == "Dementia" else "#059669"
-    vote = f"{s['agree']} of {s['n']} seeds" if s["n"] > 1 else "single seed"
-    st.markdown(f"<div class='card' style='--accent:{accent}'><div class='label'>Model output</div>"
+    vote = f"{s['agree']} of {s['n']} training runs agree" if s["n"] > 1 else "single training run"
+    c1, c2 = st.columns([24, 1], vertical_alignment="top")
+    c1.markdown(f"<div class='card' style='--accent:{accent}'><div class='label'>Model output</div>"
                 f"<div class='value'>{s['call']}</div><div class='detail'>{MODELS[res['model']]} · "
                 f"{WEIGHTS[res['weights']].lower()} · {vote}</div></div>", unsafe_allow_html=True)
+    with c2.popover("", icon=":material/info:"):
+        st.markdown(INFO["output"])
     if res["example"]:
-        st.warning("Example input. The representation is computed normally, but the model output is not "
-                   "meaningful for synthetic or template images, which are outside the training data.")
+        st.warning("Example input. The model output is not meaningful for synthetic or template images.")
     for w in subj.qc:
         st.warning(w)
     m = st.columns(4)
-    m[0].metric("Mean P(Dementia)", f"{s['mean_p']:.3f}")
-    m[1].metric("Similarity to Dementia pattern", f"{res['score']:+.2f}",
+    m[0].metric("Mean P(Dementia)", f"{s['mean_p']:.3f}", help="Average of the five training runs.")
+    m[1].metric("Similarity to dementia pattern", f"{res['score']:+.2f}",
                 help="How much this scan's differences from a normal brain look like the typical dementia "
-                     "pattern (0: not at all; positive: similar). Details in Group comparison.")
+                     "pattern (0: not at all; positive: similar). See Comparison with ADNI groups.")
     m[2].metric("Voxel size (mm)", " × ".join(f"{v:.2f}" for v in subj.spacing))
     m[3].metric("Protocol group", subj.protocol,
-                help="slice1.2: 1.2 mm left-right spacing (ADNI-1 style); iso1.0: 1.0 mm or finer.")
+                help="slice1.2: 1.2 mm slices (ADNI-1 style); iso1.0: 1.0 mm or finer. Comparisons use "
+                     "ADNI participants of the same group.")
     left, right = st.columns([3, 2], gap="large")
     with left:
+        heading("Output per training run", INFO["seeds"])
         st.dataframe(df, hide_index=True, use_container_width=True, column_config={
-            "seed": st.column_config.NumberColumn("Seed", format="%d"),
+            "seed": st.column_config.NumberColumn("Run", format="%d"),
             "P(Dementia)": st.column_config.ProgressColumn("P(Dementia)", min_value=0, max_value=1, format="%.3f"),
-            "threshold": st.column_config.NumberColumn("Threshold", format="%.3f",
-                                                       help="Chosen on the ADNI validation set (Youden's J)."),
+            "threshold": st.column_config.NumberColumn("Threshold", format="%.3f"),
             "call": st.column_config.TextColumn("Call")})
-        st.markdown("<p class='note'>Each seed is compared with its own validation threshold; the output "
-                    "is the majority vote.</p>", unsafe_allow_html=True)
     with right:
+        st.markdown("##### Downloads")
         buf = io.BytesIO()
         np.save(buf, Tn)
-        st.download_button("Download spherical tensor (.npy)", buf.getvalue(), "spherical_tensor_36x72x48.npy",
+        st.download_button("Spherical representation (.npy)", buf.getvalue(), "spherical_tensor_36x72x48.npy",
                            use_container_width=True)
-        st.download_button("Download model output (.csv)", df.to_csv(index=False), "model_output.csv",
+        st.download_button("Model output (.csv)", df.to_csv(index=False), "model_output.csv",
                            use_container_width=True)
-        st.markdown(f"<p class='note'>Processed in {subj.seconds:.1f} s on {P.DEVICE.type.upper()}.</p>",
-                    unsafe_allow_html=True)
+        st.caption(f"Processed in {subj.seconds:.1f} s on {P.DEVICE.type.upper()}.")
 
-# Group comparison
-with tabs[1]:
-    st.markdown(f"This scan against the ADNI training groups of the same protocol ({subj.protocol}).")
-    f = st.columns([2, 5])[0].select_slider("Shell (r / R_edge)", SHELLS, value=0.3, key="cmp_r")
+elif sec == "Comparison with ADNI groups":
+    heading(f"This scan next to the ADNI groups (protocol {subj.protocol})", INFO["groups"])
+    f = st.columns([2, 5])[0].select_slider("Depth of the shell (fraction of the way to the edge)", SHELLS,
+                                            value=0.3, key="cmp_r")
     show("group", viz.group_maps, Tn, ref, subj.protocol, f=f)
-    c1, c2 = st.columns([3, 2], gap="large")
-    with c1:
-        show("score", viz.score_plot, ref, res["score"])
-    with c2:
-        st.markdown(f"**Similarity to the Dementia pattern: {res['score']:+.2f}**")
-        st.markdown(
-            "<p class='note'>Does this scan differ from a normal brain in the same places, and in the same "
-            "direction, as dementia brains typically do? Near 0: no resemblance. Positive: it resembles the "
-            "dementia pattern. Negative: the opposite.</p>"
-            "<p class='note'>Curves: where this number falls for ADNI participants who were not used to build "
-            f"the group averages (blue CN, red Dementia). On them it separates the two groups with an AUC of "
-            f"{float(ref.data['score_auc']):.2f}. A visual aid, not the model's decision.</p>",
-            unsafe_allow_html=True)
-    st.markdown("**On this brain**")
-    show("anatomy", viz.anatomy_effects, geo, ref.d, res["z"])
+    heading(f"Similarity to the dementia pattern: {res['score']:+.2f}",
+            INFO["score"].format(auc=float(ref.data["score_auc"])))
+    st.columns([3, 2])[0].image(png(res["key"], "score", DARK, (), viz.score_plot, (ref, res["score"])),
+                                use_container_width=True)
+    heading("On this brain", INFO["views"])
+    mode = st.segmented_control("Show", list(viz.THREE_VIEW_MODES), default="anatomy",
+                                format_func=viz.THREE_VIEW_MODES.get, key="views_mode",
+                                label_visibility="collapsed") or "anatomy"
+    show(f"views-{mode}", lambda dark: viz.three_views(geo, mode, dark, d=ref.d, z=res["z"], T=Tn))
 
-# Grad-CAM
-with tabs[2]:
-    if is_tf:
-        st.warning("Spherical Transformer Grad-CAM has no radial resolution and was unstable across seeds in "
-                   "the paper; it is shown for completeness and should not be interpreted.")
-    st.markdown("Regions that increase the Dementia output, averaged over the selected seeds.")
-    show("cam_rays", viz.cam_rays, cam, geo, transformer=is_tf)
-    show("cam_slices", viz.cam_slices, cam, geo)
-    show("cam_shells", viz.cam_shells, cam, geo)
-
-# Rays
-with tabs[3]:
-    c1, c2, c3 = st.columns([2, 3, 1.4])
+elif sec == "Rays and attention":
+    heading("Rays from the centre of the brain", INFO["rays"])
+    c0, c1, c2, c3 = st.columns([2.2, 1.8, 2.6, 1.3], vertical_alignment="bottom")
+    colour = c0.segmented_control("Colour", ["Plain", "Model attention"], default="Plain",
+                                  key="rays_colour") or "Plain"
+    attention = colour == "Model attention"
     density = {"Sparse": 6, "Medium": 3, "Dense": 2}
-    step = density[c1.select_slider("Rays shown", list(density), value="Medium")]
-    planes = c2.multiselect("Slices", ["axial", "coronal", "sagittal"], default=["axial", "sagittal"])
-    edge = c3.checkbox("Edge surface", value=True)
-    st.plotly_chart(viz.rays_3d(geo, DARK, step, planes, edge), use_container_width=True,
-                    config={"displaylogo": False})
-    show("rays2d", viz.slices, geo)
+    step = density[c1.select_slider("Number of rays", list(density), value="Medium", key="rays_density")]
+    planes = c2.multiselect("Slices", ["axial", "coronal", "sagittal"], default=["axial", "sagittal"],
+                            key="rays_planes")
+    edge = c3.checkbox("Brain edge", value=True, key="rays_edge")
+    if attention and is_tf:
+        st.caption("Spherical Transformer attention was unstable across training runs in the paper; "
+                   "interpret with caution.")
+    st.plotly_chart(viz.rays_3d(geo, DARK, step, planes, edge, cam if attention else None),
+                    use_container_width=True, config={"displaylogo": False})
+    heading("Slices through the centre of the brain", INFO["slices"])
+    show(f"rayslices-{attention}",
+         lambda dark: viz.three_views(geo, "anatomy", dark, cam=cam if attention else None, rays=True))
+    if attention:
+        heading("Where the model looked", INFO["attention"])
+        show("attention", viz.attention_summary, cam, geo, transformer=is_tf)
 
-# Spherical tensor
-with tabs[4]:
-    show("tensor", viz.tensor_maps, Tn)
-    st.markdown("<p class='note'>Each map is one shell: elevation (inferior to superior) against azimuth "
-                "(right, anterior, left, posterior).</p>", unsafe_allow_html=True)
-    show("samples", lambda g, t, dark: viz.slices(g, dark, "tensor", t), geo, Tn)
-
-# 3-D shells
-with tabs[5]:
-    c1, c2, c3 = st.columns([2, 3, 1.6])
-    kind = c1.selectbox("Colour", ["intensity", "gradcam", "deviation"],
-                        format_func={"intensity": "Intensity", "gradcam": "Grad-CAM",
-                                     "deviation": "Deviation from CN (z)"}.get)
-    radii = c2.multiselect("Shells (r / R_edge)", SHELLS + [1.0], default=[0.3, 0.5, 0.9])
-    cut = c3.checkbox("Cut away front-right", value=False)
+elif sec == "3-D shells":
+    heading("Shells at fixed depths", INFO["shells"])
+    c1, c2, c3 = st.columns([2, 3, 1.6], vertical_alignment="bottom")
+    kind = c1.selectbox("Colour", ["intensity", "gradcam", "deviation"], key="shell_kind",
+                        format_func={"intensity": "Image intensity", "gradcam": "Model attention",
+                                     "deviation": "Difference from normal"}.get)
+    radii = c2.multiselect("Shells (fraction of the way to the edge)", SHELLS + [1.0], default=[0.3, 0.5, 0.9],
+                           key="shell_radii")
+    cut = c3.checkbox("Cut away front-right", value=False, key="shell_cut")
     vals = {"intensity": Tn, "gradcam": cam, "deviation": res["z"]}[kind]
     st.plotly_chart(viz.shells_3d(vals, geo, DARK, radii or [0.9], kind, cut), use_container_width=True,
                     config={"displaylogo": False})
 
-# About
-with tabs[6]:
+else:
     st.markdown(f"""
-**Method.** The skull-stripped T1 volume is bias-corrected (N4) and resampled to 1.2 mm. Rays from the
-brain's centre of mass in 36 × 72 directions reach a smoothed, direction-specific brain edge and are sampled
-at 48 fractions of their length, giving a 36 × 72 × 48 tensor. No registration to a template is used.
+**Method.** The skull-stripped T1 scan is corrected for scanner brightness variations (N4) and resampled to
+1.2 mm. Rays from the brain's centre of mass in 36 × 72 directions reach its smoothed outer edge and are
+sampled at 48 points each, giving a 36 × 72 × 48 spherical representation. No alignment to a template brain
+is used.
 
-**Models.** CNN3D (72,001 parameters) and Spherical Transformer (244,801), five training seeds each,
-trained on ADNI CN and Dementia participants. Weights: huggingface.co/{P.HF_REPO}.
+**Models.** CNN3D (72,001 parameters) and Spherical Transformer (244,801), five training runs each, trained
+on ADNI cognitively normal and Dementia participants. Weights: huggingface.co/{P.HF_REPO}.
 
-**Group comparison.** Means and standard deviations of the ADNI training partition per acquisition protocol;
-group effect as protocol-adjusted Cohen's d (paper, Fig. 4). Only aggregate statistics are distributed.
+**ADNI comparison.** Averages and spreads of the ADNI training participants per scanner protocol; the
+typical dementia pattern is the protocol-adjusted effect size of the paper's Fig. 4. Only aggregate
+statistics are distributed.
+
+**Model attention** is Grad-CAM of the Dementia output, scaled to its 99th percentile, as in the paper.
 
 **Reproducibility.** The toolkit runs the repository's own preprocessing, transform and model code. On ADNI
-test subjects it reproduces the paper's tensors exactly and its model probabilities to within 1e-7.
+test participants it reproduces the paper's representation exactly and its model probabilities to within
+1e-7.
 
 **Citation.** *Is template registration necessary? A subject-centred spherical representation of structural
 MRI for Alzheimer's disease classification* (citation to be added on publication). Data used in developing

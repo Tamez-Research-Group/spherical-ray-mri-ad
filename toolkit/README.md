@@ -27,21 +27,19 @@ The weights (about 60 MB) are downloaded from [Hugging Face](https://huggingface
 ## Using the app
 
 1. In the sidebar, choose the input: upload a scan, or one of two examples with no participant data (a synthetic phantom with adjustable atrophy, or the MNI152 template).
-2. Choose the model, the weights (best epoch, the paper's primary analysis, or the top-5 average) and the training seeds (all five with a majority vote, or one).
+2. Choose the model, the weights (best epoch, the paper's main analysis, or the top-5 average) and the training runs (all five with a majority vote, or one).
 3. Press **Analyze**. Changing a setting afterwards does not recompute anything until you press Analyze again.
 
-The **Dark mode** switch changes the theme of the app and of every figure.
+The **Dark mode** switch changes the theme of the app and of every figure. Every section has an info button (ⓘ) that explains, in plain language, how to read it.
 
-| Tab | Contents |
+| Section | Contents |
 |---|---|
-| Summary | Model output (majority vote), mean probability, similarity to the Dementia pattern, input checks, per-seed probabilities and thresholds; downloads of the tensor (`.npy`) and the output (`.csv`) |
-| Group comparison | The scan beside the ADNI CN and Dementia group means of the same acquisition protocol, at a chosen shell; the group effect (Cohen's d, as in the paper's Fig. 4) beside the scan's z-score against CN; the scan's similarity score against the ADNI validation distributions; both maps on the scan's own anatomy |
-| Grad-CAM | Importance per ray, rays coloured by importance and the depth profile (as in Fig. S gradcam_rays); Grad-CAM on the scan's slices (Fig. S gradcam); Grad-CAM on shells (Fig. S gradcam_shells) |
-| Rays | Interactive 3-D rays from the centre of mass to the smoothed edge, with the edge surface and slices; rays on 2-D slices |
-| Spherical tensor | The tensor at r = 0.3, 0.5, 0.7 and 0.9 R_edge (as in Fig. S cn_vs_ad), and its samples drawn back into the brain |
-| 3-D shells | Interactive nested shells coloured by intensity, Grad-CAM or deviation from CN. Outer shells are translucent unless the front-right quadrant is cut away |
+| Summary | Model output (majority vote of the training runs), mean probability, similarity to the dementia pattern, input checks, per-run probabilities and thresholds; downloads of the spherical representation (`.npy`) and the output (`.csv`) |
+| Comparison with ADNI groups | The scan beside the ADNI normal and dementia averages of the same scanner protocol, at a chosen depth; the typical dementia pattern (Cohen's d, as in the paper's Fig. 4) beside the scan's difference from normal; the similarity score against the ADNI validation distributions; the three standard views with a selector: brain, typical dementia pattern, this scan vs normal, or the spherical sampling |
+| Rays and attention | Interactive 3-D rays from the centre of the brain to its edge, with slices, and the same rays on the three views. Selecting **Model attention** colours the rays by Grad-CAM (as in Fig. S gradcam_rays), overlays Grad-CAM on the slices (Fig. S gradcam), and adds attention by direction and by depth |
+| 3-D shells | Interactive nested shells coloured by image intensity, model attention or difference from normal. Outer shells are see-through unless the front-right quadrant is cut away |
 
-**Similarity to the Dementia pattern.** This is the correlation between the scan's z-score map against the CN mean and the CN − Dementia effect map, over the cells where the groups differ (|d| ≥ 0.15, polar caps excluded). It is descriptive: on ADNI validation participants, who were not used to compute the group statistics, it separates CN from Dementia with an AUC of 0.85. It is not one of the paper's classifiers.
+**Similarity to the dementia pattern.** This is the correlation between the scan's z-score map against the CN mean and the CN − Dementia effect map, over the cells where the groups differ (|d| ≥ 0.15, polar caps excluded). It is descriptive: on ADNI validation participants, who were not used to compute the group statistics, it separates CN from Dementia with an AUC of 0.85. It is not one of the paper's classifiers.
 
 **Reference data.** `toolkit/reference/adni_reference.npz` holds aggregate statistics of the ADNI training partition: the mean and SD tensors per group and acquisition protocol (n = 92 to 496 per cell), the protocol-adjusted Cohen's d map, and smoothed density curves of the similarity score on the validation partition. It contains no participant-level data. `toolkit/build_reference.py` rebuilds it from the spherical-tensor cache.
 
