@@ -315,7 +315,10 @@ def group_maps(T, ref, protocol, f, dark=False):
     fig = plt.figure(figsize=(11, 5.8))
     sf_top, sf_bot = fig.subfigures(2, 1, hspace=0.04)
     top_axes = sf_top.subplots(1, 3, gridspec_kw={"wspace": 0.08})
-    bot_axes = sf_bot.subplots(1, 3, gridspec_kw={"wspace": 0.45})
+    spacer_l, b1, b2, spacer_r = sf_bot.subplots(1, 4, gridspec_kw={"wspace": 0.45,
+                                                                   "width_ratios": [0.42, 1, 1, 0.42]})
+    spacer_l.axis("off"), spacer_r.axis("off")
+    bot_axes = [b1, b2]
     top = [(ref.mean("CN", protocol)[:, :, k], f"Normal average (n = {ref.n('CN', protocol)})"),
            (ref.mean("Dementia", protocol)[:, :, k], f"Dementia average (n = {ref.n('Dementia', protocol)})"),
            (T[:, :, k], "This scan")]
@@ -333,9 +336,6 @@ def group_maps(T, ref, protocol, f, dark=False):
         bot_axes[j].set_title(title)
         bot_axes[j].set_xlabel("Direction around the head")
         sf_bot.colorbar(imd, ax=bot_axes[j], fraction=0.05, pad=0.03).set_label(label)
-    bot_axes[2].axis("off")
-    bot_axes[2].text(0.05, 0.5, "Red: darker than normal.\nBlue: brighter than normal.",
-                     transform=bot_axes[2].transAxes, va="center", color=t["muted"])
     top_axes[0].set_ylabel("Inferior – superior"), bot_axes[0].set_ylabel("Inferior – superior")
     return fig
 

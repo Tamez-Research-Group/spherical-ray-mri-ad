@@ -122,10 +122,22 @@ def png(key: str, name: str, dark: bool, params: tuple, _fn, _args: tuple) -> by
     return buf.getvalue()
 
 
+VIZ_VERSION = hashlib.md5(Path(viz.__file__).read_bytes()).hexdigest()[:8]   # new figure code -> new images
+
+
 def show(name, fn, *args, **params):
     """Display a cached figure; `params` must be small hashable keyword arguments."""
     r = st.session_state.result
-    st.image(png(r["key"], name, DARK, tuple(sorted(params.items())), fn, args), use_container_width=True)
+    st.image(png(r["key"] + VIZ_VERSION, name, DARK, tuple(sorted(params.items())), fn, args),
+             use_container_width=True)
+
+
+def figure(name, fn, *args, caption=None, info=None, widths=(1, 10, 1), **params):
+    """A centred figure with a one-line caption; the caption's info icon explains it on hover."""
+    with st.columns(widths)[1]:
+        show(name, fn, *args, **params)
+        if caption:
+            st.caption(caption, help=info)
 
 
 # ── sidebar ──────────────────────────────────────────────────────────────────
@@ -287,11 +299,8 @@ cut-away, the outer shells are see-through so the inner ones stay visible.""",
 }
 
 
-def heading(title, info):
-    c1, c2 = st.columns([24, 1], vertical_alignment="center")
-    c1.markdown(f"##### {title}")
-    with c2.popover("", icon=":material/info:"):
-        st.markdown(info)
+def heading(title, info=None):
+    st.markdown(f"##### {title}", help=info)
 
 
 SECTIONS = ["Summary", "Comparison with ADNI groups", "Rays and attention", "3-D shells", "About"]
@@ -304,12 +313,10 @@ st.session_state.last_section = sec
 if sec == "Summary":
     accent = "#d97706" if s["call"] == "Dementia" else "#059669"
     vote = f"{s['agree']} of {s['n']} training runs agree" if s["n"] > 1 else "single training run"
-    c1, c2 = st.columns([24, 1], vertical_alignment="top")
-    c1.markdown(f"<div class='card' style='--accent:{accent}'><div class='label'>Model output</div>"
+    st.markdown(f"<div class='card' style='--accent:{accent}'><div class='label'>Model output</div>"
                 f"<div class='value'>{s['call']}</div><div class='detail'>{MODELS[res['model']]} · "
                 f"{WEIGHTS[res['weights']].lower()} · {vote}</div></div>", unsafe_allow_html=True)
-    with c2.popover("", icon=":material/info:"):
-        st.markdown(INFO["output"])
+    st.caption("How the result is obtained", help=INFO["output"])
     if res["example"]:
         st.warning("Example input. The model output is not meaningful for synthetic or template images.")
     for w in subj.qc:
@@ -342,19 +349,28 @@ if sec == "Summary":
         st.caption(f"Processed in {subj.seconds:.1f} s on {P.DEVICE.type.upper()}.")
 
 elif sec == "Comparison with ADNI groups":
-    heading(f"This scan next to the ADNI groups (protocol {subj.protocol})", INFO["groups"])
-    f = st.columns([2, 5])[0].select_slider("Depth of the shell (fraction of the way to the edge)", SHELLS,
-                                            value=0.3, key="cmp_r")
-    show("group", viz.group_maps, Tn, ref, subj.protocol, f=f)
-    heading(f"Similarity to the dementia pattern: {res['score']:+.2f}",
-            INFO["score"].format(auc=float(ref.data["score_auc"])))
-    st.columns([3, 2])[0].image(png(res["key"], "score", DARK, (), viz.score_plot, (ref, res["score"])),
-                                use_container_width=True)
-    heading("On this brain", INFO["views"])
-    mode = st.segmented_control("Show", list(viz.THREE_VIEW_MODES), default="anatomy",
-                                format_func=viz.THREE_VIEW_MODES.get, key="views_mode",
-                                label_visibility="collapsed") or "anatomy"
-    show(f"views-{mode}", lambda dark: viz.three_views(geo, mode, dark, d=ref.d, z=res["z"], T=Tn))
+    heading(f"This scan next to the ADNI groups (protocol {subj.protocol})")
+    f = st.columns([1, 3, 1])[1].select_slider("Depth of the shell (fraction of the way to the edge)", SHELLS,
+                                               value=0.3, key="cmp_r")
+    figure("group", viz.group_maps, Tn, ref, subj.protocol, f=f,
+           caption="Top: normal and dementia averages beside this scan. Bottom: the typical dementia pattern "
+                   "beside this scan's difference from normal (red: darker than normal).",
+           info=INFO["groups"])
+    heading(f"Similarity to the dementia pattern: {res['score']:+.2f}")
+    figure("score", viz.score_plot, ref, res["score"], widths=(1, 3, 1),
+           caption="Where this scan falls among ADNI normal (blue) and dementia (red) participants.",
+           info=INFO["score"].format(auc=float(ref.data["score_auc"])))
+    heading("On this brain")
+    with st.columns([1, 10, 1])[1]:
+        mode = st.segmented_control("Show", list(viz.THREE_VIEW_MODES), default="anatomy",
+                                    format_func=viz.THREE_VIEW_MODES.get, key="views_mode",
+                                    label_visibility="collapsed") or "anatomy"
+    figure(f"views-{mode}", lambda dark: viz.three_views(geo, mode, dark, d=ref.d, z=res["z"], T=Tn),
+           caption={"anatomy": "The scan with its outer edge (orange) and centre (dot).",
+                    "pattern": "Where dementia brains typically differ from normal, drawn on this brain.",
+                    "scan": "Where this scan is darker (red) or brighter (blue) than the normal average.",
+                    "tensor": "The values the networks see, drawn where they were sampled."}[mode],
+           info=INFO["views"])
 
 elif sec == "Rays and attention":
     heading("Rays from the centre of the brain", INFO["rays"])
@@ -372,12 +388,18 @@ elif sec == "Rays and attention":
                    "interpret with caution.")
     st.plotly_chart(viz.rays_3d(geo, DARK, step, planes, edge, cam if attention else None),
                     use_container_width=True, config={"displaylogo": False})
-    heading("Slices through the centre of the brain", INFO["slices"])
-    show(f"rayslices-{attention}",
-         lambda dark: viz.three_views(geo, "anatomy", dark, cam=cam if attention else None, rays=True))
+    heading("Slices through the centre of the brain")
+    figure(f"rayslices-{attention}",
+           lambda dark: viz.three_views(geo, "anatomy", dark, cam=cam if attention else None, rays=True),
+           caption=("Colour: regions that most increased the dementia output." if attention else
+                    "Rays in each plane, ending at the brain's outer edge (orange)."),
+           info=INFO["slices"])
     if attention:
-        heading("Where the model looked", INFO["attention"])
-        show("attention", viz.attention_summary, cam, geo, transformer=is_tf)
+        heading("Where the model looked")
+        figure("attention", viz.attention_summary, cam, geo, transformer=is_tf,
+               caption="Left: attention for each direction. Right: attention from the centre to the edge "
+                       "along the most important rays.",
+               info=INFO["attention"])
 
 elif sec == "3-D shells":
     heading("Shells at fixed depths", INFO["shells"])

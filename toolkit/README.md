@@ -30,7 +30,7 @@ The weights (about 60 MB) are downloaded from [Hugging Face](https://huggingface
 2. Choose the model, the weights (best epoch, the paper's main analysis, or the top-5 average) and the training runs (all five with a majority vote, or one).
 3. Press **Analyze**. Changing a setting afterwards does not recompute anything until you press Analyze again.
 
-The **Dark mode** switch changes the theme of the app and of every figure. Every section has an info button (ⓘ) that explains, in plain language, how to read it.
+The **Dark mode** switch changes the theme of the app and of every figure. Each figure has a one-line caption; hovering over its help icon (?) explains, in plain language, how to read it.
 
 | Section | Contents |
 |---|---|
