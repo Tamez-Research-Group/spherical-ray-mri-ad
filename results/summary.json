@@ -1,0 +1,30 @@
+{
+  "n_train": 1183,
+  "n_val": 254,
+  "n_test": 254,
+  "n_test_dementia": 70,
+  "classes": [
+    "CN",
+    "Dementia"
+  ],
+  "pca_components": 50,
+  "pca_variance_explained": 0.4977642326586125,
+  "threshold_rule": "Youden J on validation partition",
+  "n_boot": 2000,
+  "n_boot_valid": 2000,
+  "boot_seed": 42,
+  "xgboost_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "excluded_no_cache": [],
+  "test_protocol_counts": {
+    "iso1.0|CN": 105,
+    "iso1.0|Dementia": 12,
+    "slice1.2|CN": 79,
+    "slice1.2|Dementia": 58
+  }
+}

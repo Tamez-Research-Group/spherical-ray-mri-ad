@@ -1,0 +1,3 @@
+config_a,config_b,delta_AUC,lo,hi,p_boot,p_holm
+CNN3D (best epoch),"CNN3D, spherical of MNI SyN (best epoch)",-0.016071428571428514,-0.03359793172243713,0.00041218056413888686,0.058,0.116
+Spherical Transformer (best epoch),"Spherical Transformer, spherical of MNI SyN (best epoch)",0.006847826086956554,-0.016188871907381695,0.03180726371633133,0.602,0.602

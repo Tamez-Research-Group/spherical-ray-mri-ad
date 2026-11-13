@@ -1,0 +1,12 @@
+region,voxels,CNN3D,"CNN3D, spherical of MNI SyN","CNN3D, MNI SyN",Spherical Transformer
+Pallidum,527,1.729,1.981,1.212,1.705
+Amygdala,672,1.677,3.433,1.222,1.424
+Hippocampus,1391,1.620,3.488,1.437,1.225
+Putamen,1595,1.398,2.054,1.048,1.582
+Accumbens,173,1.300,0.906,1.412,1.695
+Thalamus,2604,1.245,0.841,1.907,1.144
+Brain-Stem,4770,1.120,0.883,0.912,0.892
+Cerebral White Matter,62732,1.101,1.268,1.169,0.947
+Lateral Ventricle,2164,0.987,0.906,1.598,0.842
+Caudate,998,0.963,0.558,1.199,1.065
+Cerebral Cortex,126492,0.943,0.905,1.012,1.069

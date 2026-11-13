@@ -1,0 +1,36 @@
+{
+  "n_test": 254,
+  "n_dementia": 70,
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "CNN3D": {
+    "seed_agreement_r_mean": 0.6072844845100589,
+    "seed_agreement_r_min": 0.3678793193076276,
+    "randomized_weights_r": 0.15324076516902904
+  },
+  "CNN3D, spherical of MNI SyN": {
+    "seed_agreement_r_mean": 0.7632580948615602,
+    "seed_agreement_r_min": 0.5896943978905296
+  },
+  "CNN3D, MNI SyN": {
+    "seed_agreement_r_mean": 0.8494843336956484,
+    "seed_agreement_r_min": 0.73137513475834
+  },
+  "Spherical Transformer": {
+    "seed_agreement_r_mean": 0.12227656785638555,
+    "seed_agreement_r_min": -0.007253013928774165
+  },
+  "between_models_r": {
+    "CNN3D | CNN3D, spherical of MNI SyN": 0.6810616709897079,
+    "CNN3D | CNN3D, MNI SyN": 0.3259053104549915,
+    "CNN3D | Spherical Transformer": 0.24618484043551747,
+    "CNN3D, spherical of MNI SyN | CNN3D, MNI SyN": 0.36100538071461735,
+    "CNN3D, spherical of MNI SyN | Spherical Transformer": 0.19682881950251466,
+    "CNN3D, MNI SyN | Spherical Transformer": 0.18834673901816815
+  }
+}

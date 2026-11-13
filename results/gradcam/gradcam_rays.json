@@ -1,0 +1,34 @@
+{
+  "CNN3D": {
+    "top_rays": 108,
+    "peak_depth_r_over_Redge": 0.7916666666666666,
+    "max_ray_phi_deg": -42.5,
+    "max_ray_theta_deg": 127.5
+  },
+  "CNN3D, spherical of MNI SyN": {
+    "top_rays": 108,
+    "peak_depth_r_over_Redge": 0.4791666666666667,
+    "max_ray_phi_deg": -37.5,
+    "max_ray_theta_deg": 12.5
+  },
+  "CNN3D, MNI SyN": {
+    "top_rays": 108,
+    "peak_depth_r_over_Redge": 0.2708333333333333,
+    "max_ray_phi_deg": -2.5,
+    "max_ray_theta_deg": 357.5
+  },
+  "Spherical Transformer": {
+    "top_rays": 108,
+    "peak_depth_r_over_Redge": 0.020833333333333332,
+    "max_ray_phi_deg": -17.5,
+    "max_ray_theta_deg": 42.5
+  },
+  "between_models_ray_r": {
+    "CNN3D | CNN3D, spherical of MNI SyN": 0.5401786080061781,
+    "CNN3D | CNN3D, MNI SyN": 0.11613507445032349,
+    "CNN3D | Spherical Transformer": 0.31721896407684375,
+    "CNN3D, spherical of MNI SyN | CNN3D, MNI SyN": 0.3049325086803551,
+    "CNN3D, spherical of MNI SyN | Spherical Transformer": 0.2642149832426619,
+    "CNN3D, MNI SyN | Spherical Transformer": 0.23047245782878079
+  }
+}

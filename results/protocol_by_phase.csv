@@ -1,0 +1,7 @@
+protocol,Phase,CN,Dementia
+iso1.0,ADNI 3,356,76
+iso1.0,ADNI 4,345,49
+slice1.2,ADNI 1,219,176
+slice1.2,ADNI 2,230,159
+slice1.2,ADNI 3,70,9
+slice1.2,ADNI GO,2,0

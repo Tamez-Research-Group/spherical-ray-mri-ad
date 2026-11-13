@@ -1,0 +1,24 @@
+# ADNI participant-level data: never commit (ADNI Data Use Agreement).
+# No images, image-derived tensors, subject IDs, diagnoses, partitions,
+# clinical scores or per-subject outputs.
+cohort/cohort.csv
+cohort/manifest.csv
+cohort/figure_subjects.json
+results/predictions.csv
+results/timing.csv
+results/_cache/
+runs/
+*.nii
+*.nii.gz
+MRIPrep_outputs/
+spherical_cache/
+native_cache/
+registered_cache/
+
+# Generated outputs (recreate with the notebooks and scripts)
+figures/
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
