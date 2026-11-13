@@ -25,6 +25,7 @@ Each skull-stripped T1-weighted MRI is resampled along rays cast from the subjec
 | `run_experiments.ps1` | Runs every training configuration and seed, then `evaluate.py` | — |
 | `notebooks/results.ipynb`, `notebooks/registration_comparison.ipynb` | Figures and tables of the paper, computed from `results/` and the training runs | §3 |
 | `results/` | Aggregate results reported in the paper (no per-subject data) | §3 |
+| `toolkit/` | Local web app and CLI: upload a skull-stripped T1, see rays, shells and Grad-CAM, get each model's output ([toolkit/README.md](toolkit/README.md)) | — |
 
 Trained weights for every configuration and seed (safetensors, best-epoch and top-5 averaged) are at
 <https://huggingface.co/lalodeavilaarm/adni-spherical-classification>.
@@ -39,6 +40,15 @@ pip install -r requirements.txt
 ```
 
 The commands below use the Windows launcher `py -3.12`; on Linux or macOS use `python`.
+
+## Trying the pipeline on your own scan
+
+```bash
+pip install -r toolkit/requirements.txt
+python toolkit/app.py            # open http://127.0.0.1:7860
+```
+
+Upload a skull-stripped T1 NIfTI and choose CNN3D or the Spherical Transformer. The app shows the rays, the spherical shells, the per-seed model output and, optionally, Grad-CAM. It runs locally and is for research use only; see [toolkit/README.md](toolkit/README.md).
 
 ## Reproducing the experiments
 
