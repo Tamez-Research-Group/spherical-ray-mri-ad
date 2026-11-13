@@ -2,12 +2,11 @@
 
     python toolkit/app.py            # opens http://localhost:8501
 
-Upload a skull-stripped T1-weighted NIfTI, pick a model, and explore the
-harmonized spherical representation (3-D rays, slices, shells, unwrapped
-tensor), the model output of each training seed and, optionally, Grad-CAM.
-Everything runs on this machine: the server listens on localhost only and
-Streamlit's usage statistics are switched off. Weights are downloaded once
-from Hugging Face (or read from SPHERICAL_WEIGHTS_DIR).
+Choose a skull-stripped T1-weighted NIfTI (or an example), a model, and press
+Analyze. The app shows the subject-centred spherical representation, the model
+output per training seed, the scan compared with the ADNI CN and Dementia
+groups, and Grad-CAM. It runs on this computer only (localhost, Streamlit
+usage statistics off); weights come from Hugging Face or SPHERICAL_WEIGHTS_DIR.
 
 Research use only. Not a medical device; the output is not a diagnosis.
 """
@@ -17,7 +16,6 @@ import hashlib
 import io
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -28,8 +26,8 @@ def _launch():
     from streamlit.web import cli
     sys.argv = ["streamlit", "run", str(Path(__file__).resolve()),
                 "--server.address", "localhost", "--browser.gatherUsageStats", "false",
-                "--server.maxUploadSize", "500", "--theme.base", "light",
-                "--theme.primaryColor", "#2563eb", *sys.argv[1:]]
+                "--server.maxUploadSize", "500", "--client.toolbarMode", "minimal", "--theme.base", "light", "--theme.primaryColor", "#2563eb",
+                *sys.argv[1:]]
     sys.exit(cli.main())
 
 
@@ -40,230 +38,299 @@ if __name__ == "__main__":
 
 sys.path.insert(0, str(HERE))
 
-import numpy as np          # noqa: E402
-import pandas as pd         # noqa: E402
-import streamlit as st      # noqa: E402
+import matplotlib.pyplot as plt     # noqa: E402
+import numpy as np                  # noqa: E402
+import streamlit as st              # noqa: E402
 
-import examples             # noqa: E402
-import pipeline as P        # noqa: E402
-import viz                  # noqa: E402
+import examples                     # noqa: E402
+import pipeline as P                # noqa: E402
+import viz                          # noqa: E402
 
-st.set_page_config(page_title="Spherical-ray MRI toolkit", page_icon="🧠", layout="wide")
-st.markdown("""
+st.set_page_config(page_title="Spherical-ray MRI", layout="wide")
+
+MODELS = {"cnn": "CNN3D", "transformer": "Spherical Transformer"}
+WEIGHTS = {"best": "Best epoch", "avg": "Top-5 average"}
+SOURCES = {"upload": "Upload a scan", "phantom": "Synthetic phantom", "mni152": "MNI152 template"}
+SHELLS = [0.3, 0.5, 0.7, 0.9]
+DISCLAIMER = "Research use only. Not a medical device; the output is not a diagnosis."
+
+
+# ── theme ────────────────────────────────────────────────────────────────────
+
+if "dark" not in st.session_state:
+    st.session_state.dark = st.query_params.get("theme") == "dark"
+
+
+def _apply_theme():
+    """The theme is sent to the browser when a run starts, so a change takes
+    effect after one rerun. (Streamlit's theme option is server-wide; this is a
+    single-user local app.)"""
+    want = "dark" if st.session_state.dark else "light"
+    st.query_params["theme"] = want
+    if st._config.get_option("theme.base") != want:
+        st._config.set_option("theme.base", want)
+        st.rerun()
+
+
+_apply_theme()
+DARK = st.session_state.dark
+T = viz.THEMES[DARK]
+st.markdown(f"""
 <style>
-  .block-container {padding-top: 2rem; max-width: 1400px;}
-  [data-testid="stMetricValue"] {font-size: 1.6rem;}
-  .verdict {border-radius: 12px; padding: 1.1rem 1.4rem; margin-bottom: .6rem;
-            border: 1px solid rgba(0,0,0,.08);}
-  .verdict.cn {background: #ecfdf5;} .verdict.dem {background: #fff7ed;}
-  .verdict h2 {margin: 0; font-size: 1.5rem;} .verdict p {margin: .2rem 0 0; color: #475569;}
-  .note {font-size: .85rem; color: #64748b;}
+  .block-container {{padding-top: 1.6rem; max-width: 1320px;}}
+  h1 {{font-size: 1.55rem !important; font-weight: 600 !important; margin-bottom: 0 !important;}}
+  .sub {{color: {T['muted']}; margin: 0 0 1rem;}}
+  .card {{border: 1px solid {T['grid']}; border-left: 5px solid var(--accent); border-radius: 8px;
+          padding: .9rem 1.2rem; margin: .2rem 0 1rem;}}
+  .card .label {{color: {T['muted']}; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em;}}
+  .card .value {{font-size: 1.5rem; font-weight: 600; margin: .1rem 0;}}
+  .card .detail {{color: {T['muted']}; font-size: .9rem;}}
+  .note {{color: {T['muted']}; font-size: .85rem;}}
+  [data-testid="stMetricValue"] {{font-size: 1.25rem;}}
 </style>""", unsafe_allow_html=True)
-
-DISCLAIMER = (
-    "**Research use only.** Not a medical device; the output is **not a diagnosis**. The models were "
-    "trained to separate cognitively normal (CN) from Dementia participants of ADNI (baseline "
-    "1.0–1.2 mm MPRAGE, HD-BET skull stripping). They have never seen MCI or other conditions, and "
-    "their behaviour on other scanners, protocols or populations is unknown.")
-MODEL_LABEL = {"cnn": "CNN3D", "transformer": "Spherical Transformer"}
-EXAMPLES = {"none": "—", "phantom": "Synthetic phantom", "mni152": "MNI152 template (average brain)"}
-EXAMPLE_NOTE = (
-    "**Example input, not a real scan.** The pipeline (rays, shells, tensor) works on it, but the "
-    "**model output is meaningless**: the models only know real ADNI scans, and these examples are far "
-    "outside that distribution. In our tests the CNN3D called the phantom *Dementia* and the template *CN* "
-    "with near certainty, which shows why outputs outside the training distribution cannot be trusted.")
-WEIGHT_LABEL = {"best": "Best epoch (primary)", "avg": "Top-5 checkpoint average"}
 
 
 # ── cached computation ───────────────────────────────────────────────────────
 
+@st.cache_resource(show_spinner=False)
+def reference():
+    return P.Reference.load()
+
+
 @st.cache_data(show_spinner=False, max_entries=4)
 def process_bytes(data: bytes, name: str):
-    suffix = ".nii.gz" if name.endswith(".gz") else ".nii"
+    import tempfile
+    suffix = ".nii.gz" if data[:2] == b"\x1f\x8b" else ".nii"          # gzip magic bytes
     with tempfile.TemporaryDirectory() as d:
-        p = Path(d) / f"{name.removesuffix('.gz').removesuffix('.nii')}{suffix}"
+        p = Path(d) / f"scan{suffix}"
         p.write_bytes(data)
         return P.process(p)
 
 
 @st.cache_data(show_spinner=False, max_entries=12)
 def example_bytes(kind: str, atrophy: float) -> bytes:
-    img = examples.phantom(atrophy) if kind == "phantom" else examples.mni152()
-    return img.to_bytes()
+    return (examples.phantom(atrophy) if kind == "phantom" else examples.mni152()).to_bytes()
 
 
-@st.cache_data(show_spinner=False, max_entries=16)
-def predict_cached(key: str, _T, model, weights, seeds):
-    return P.predict(_T, model, weights, seeds)
+@st.cache_data(show_spinner=False, max_entries=64)
+def png(key: str, name: str, dark: bool, params: tuple, _fn, _args: tuple) -> bytes:
+    """Matplotlib figure rendered once per analysis, theme and parameter set."""
+    fig = _fn(*_args, dark=dark, **dict(params))
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()
 
 
-@st.cache_data(show_spinner=False, max_entries=8)
-def gradcam_cached(key: str, _T, model, weights, seeds):
-    return P.gradcam(_T, model, weights, seeds)
+def show(name, fn, *args, **params):
+    """Display a cached figure; `params` must be small hashable keyword arguments."""
+    r = st.session_state.result
+    st.image(png(r["key"], name, DARK, tuple(sorted(params.items())), fn, args), use_container_width=True)
 
 
 # ── sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("### 🧠 Spherical-ray MRI")
-    st.caption("Registration-free spherical representation of structural MRI")
-    up = st.file_uploader("Skull-stripped T1 (NIfTI)", type=["nii", "gz"],
-                          help="A skull-stripped T1-weighted volume with zero background, e.g. HD-BET output.")
-    example = None
-    if up is None:
-        example = st.selectbox("…or try an example", list(EXAMPLES), format_func=EXAMPLES.get,
-                               help="No real participant data: a synthetic phantom or the MNI152 average template.")
-        atrophy = (st.slider("Phantom atrophy", 0.0, 1.0, 0.0, 0.1,
-                             help="Enlarges ventricles and sulci and thins the cortex")
-                   if example == "phantom" else 0.0)
-    st.divider()
-    model = st.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get)
-    weights = st.radio("Weights", list(WEIGHT_LABEL), format_func=WEIGHT_LABEL.get)
-    seed_opt = st.selectbox("Training seeds", ["all"] + [str(s) for s in P.SEEDS],
-                            format_func=lambda s: "All 5 (majority vote)" if s == "all" else f"Seed {s}")
-    want_cam = st.toggle("Grad-CAM", value=False, help="Gradient-weighted class activation of the Dementia logit.")
-    st.divider()
+    st.markdown("**Spherical-ray MRI**")
+    st.toggle("Dark mode", key="dark")
+    source = st.radio("Input", list(SOURCES), format_func=SOURCES.get,
+                      help="The phantom and the MNI152 template are examples with no participant data.")
+    with st.form("setup", border=False):
+        up, atrophy = None, 0.0
+        if source == "upload":
+            up = st.file_uploader("Skull-stripped T1 (NIfTI)", type=["nii", "gz"],
+                                  help="T1-weighted MRI with the skull removed (zero background), e.g. HD-BET output.")
+        elif source == "phantom":
+            atrophy = st.slider("Phantom atrophy", 0.0, 1.0, 0.0, 0.1,
+                                help="Enlarges the ventricles and sulci and thins the cortex.")
+        model = st.selectbox("Model", list(MODELS), format_func=MODELS.get)
+        weights = st.selectbox("Weights", list(WEIGHTS), format_func=WEIGHTS.get,
+                               help="Best epoch is the paper's primary analysis.")
+        seed_opt = st.selectbox("Training seeds", ["all"] + [str(s) for s in P.SEEDS],
+                                format_func=lambda s: "All 5 (majority vote)" if s == "all" else f"Seed {s}")
+        run = st.form_submit_button("Analyze", type="primary", use_container_width=True)
     st.caption(DISCLAIMER)
-    st.caption("Scans are processed on this computer and never uploaded anywhere.")
+    st.caption("Scans are processed on this computer only.")
 
 seeds = P.SEEDS if seed_opt == "all" else (int(seed_opt),)
+settings = (source, up.name if up else None, atrophy, model, weights, seeds)
 
-st.title("Spherical-ray MRI toolkit")
+st.title("Spherical-ray MRI")
+st.markdown("<p class='sub'>Registration-free spherical representation of structural MRI · "
+            "CN vs Dementia models trained on ADNI</p>", unsafe_allow_html=True)
 
-preload = os.environ.get("SPHERICAL_TOOLKIT_INPUT")      # optional: open this file at start
-if up is not None:
-    data, up_name = up.getvalue(), up.name
-elif example in ("phantom", "mni152"):
-    data, up_name = example_bytes(example, atrophy), f"example_{example}.nii"
-elif preload and Path(preload).exists():
-    data, up_name = Path(preload).read_bytes(), Path(preload).name
-else:
-    st.markdown(
-        "Upload a **skull-stripped T1-weighted NIfTI** in the sidebar, or pick an example. The toolkit runs "
-        "the paper's pipeline (no registration to a template):")
+
+# ── analysis (only when Analyze is pressed) ──────────────────────────────────
+
+def analyze():
+    if source == "upload":
+        preload = os.environ.get("SPHERICAL_TOOLKIT_INPUT")        # optional, for testing
+        if up is not None:
+            data = up.getvalue()
+        elif preload and Path(preload).exists():
+            data = Path(preload).read_bytes()
+        else:
+            st.error("Choose a NIfTI file, or select an example input.")
+            return
+    else:
+        data = example_bytes(source, atrophy if source == "phantom" else 0.0)
+    try:
+        with st.spinner("Harmonizing and computing the spherical tensor"):
+            subj = process_bytes(data, up.name if (source == "upload" and up) else "scan.nii")
+    except Exception as e:
+        st.error(f"The volume could not be processed: {e}")
+        return
+    with st.spinner("Running the models and Grad-CAM"):
+        df = P.predict(subj.tensor, model, weights, seeds)
+        cam = P.scaled_cam(P.gradcam(subj.tensor, model, weights, seeds))
+        ref = reference()
+    st.session_state.result = dict(
+        key=hashlib.sha1(data).hexdigest() + model + weights + str(seeds), subj=subj, df=df, cam=cam,
+        z=ref.deviation(subj.tensor, subj.protocol), score=ref.pattern_score(subj.tensor, subj.protocol),
+        model=model, weights=weights, seeds=seeds, example=source != "upload", settings=settings)
+
+
+if run or (os.environ.get("SPHERICAL_TOOLKIT_INPUT") and "result" not in st.session_state):
+    analyze()                      # SPHERICAL_TOOLKIT_INPUT: analyze that file at start (testing, demos)
+
+res = st.session_state.get("result")
+if res is None:
     c1, c2, c3, c4 = st.columns(4)
-    c1.markdown("**1 · Harmonize**  \nN4 bias-field correction, 1.2 mm isotropic resampling")
-    c2.markdown("**2 · Cast rays**  \nfrom the subject's centre of mass to the smoothed brain edge")
-    c3.markdown("**3 · Sample**  \n36 elevations × 72 azimuths × 48 radii = one spherical tensor")
-    c4.markdown("**4 · Classify**  \nCNN3D or Spherical Transformer, 5 training seeds")
-    st.info(DISCLAIMER)
+    for col, (head, body) in zip((c1, c2, c3, c4), (
+            ("1. Harmonize", "N4 bias-field correction and 1.2 mm resampling."),
+            ("2. Cast rays", "From the brain's centre of mass to its smoothed edge, in 36 × 72 directions."),
+            ("3. Sample", "48 points per ray give a 36 × 72 × 48 spherical tensor."),
+            ("4. Classify", "CNN3D or Spherical Transformer, five training seeds."))):
+        col.markdown(f"**{head}**  \n<span class='note'>{body}</span>", unsafe_allow_html=True)
+    st.info("Choose an input in the sidebar and press Analyze.")
     st.stop()
 
-key = hashlib.sha1(data).hexdigest()
-with st.spinner("N4 bias correction, resampling and spherical transform…"):
-    try:
-        subj = process_bytes(data, up_name)
-    except Exception as e:
-        st.error(f"Could not process the volume: {e}")
-        st.stop()
-T, geo = subj.tensor, subj.geometry
-with st.spinner("Loading weights and predicting…"):
-    df = predict_cached(f"{key}{model}{weights}{seeds}", T, model, weights, seeds)
-cam = None
-if want_cam:
-    with st.spinner("Grad-CAM…"):
-        cam = gradcam_cached(f"{key}{model}{weights}{seeds}", T, model, weights, seeds)
+if res["settings"] != settings:
+    st.info("The settings have changed. Press Analyze to update the results.")
+
+subj, df, cam, ref = res["subj"], res["df"], res["cam"], reference()
+Tn, geo = subj.tensor, subj.geometry
 s = P.summarize(df)
+is_tf = res["model"] == "transformer"
 
-# ── headline ─────────────────────────────────────────────────────────────────
+tabs = st.tabs(["Summary", "Group comparison", "Grad-CAM", "Rays", "Spherical tensor", "3-D shells", "About"])
 
-cls = "dem" if s["call"] == "Dementia" else "cn"
-vote = f"{s['agree']} of {s['n']} seeds agree" if s["n"] > 1 else "single seed"
-st.markdown(f"<div class='verdict {cls}'><h2>Model output: {s['call']}</h2>"
-            f"<p>{MODEL_LABEL[model]} · {WEIGHT_LABEL[weights].lower()} · {vote}</p></div>",
-            unsafe_allow_html=True)
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Mean P(Dementia)", f"{s['mean_p']:.3f}")
-m2.metric("Seeds voting Dementia", f"{int((df['call'] == 'Dementia').sum())} / {len(df)}")
-m3.metric("Voxel size (mm)", " × ".join(f"{v:.2f}" for v in subj.spacing))
-m4.metric("Processing", f"{subj.seconds:.1f} s", P.DEVICE.type.upper(), delta_color="off")
-if up is None and example in ("phantom", "mni152"):
-    st.warning(EXAMPLE_NOTE, icon="🧪")
-for w in subj.qc:
-    st.warning(w, icon="⚠️")
-if subj.protocol == "slice1.2":
-    st.info("1.2 mm acquisition: in ADNI this protocol coincides with the ADNI-1 phase and a higher "
-            "Dementia prevalence. The paper controls for it, but treat single outputs with care.", icon="ℹ️")
-
-tab_res, tab_rays, tab_shells, tab_map, tab_about = st.tabs(
-    ["Result", "Rays", "3-D shells", "Spherical tensor", "About"])
-
-with tab_res:
-    left, right = st.columns([3, 2])
+# Summary
+with tabs[0]:
+    accent = "#d97706" if s["call"] == "Dementia" else "#059669"
+    vote = f"{s['agree']} of {s['n']} seeds" if s["n"] > 1 else "single seed"
+    st.markdown(f"<div class='card' style='--accent:{accent}'><div class='label'>Model output</div>"
+                f"<div class='value'>{s['call']}</div><div class='detail'>{MODELS[res['model']]} · "
+                f"{WEIGHTS[res['weights']].lower()} · {vote}</div></div>", unsafe_allow_html=True)
+    if res["example"]:
+        st.warning("Example input. The representation is computed normally, but the model output is not "
+                   "meaningful for synthetic or template images, which are outside the training data.")
+    for w in subj.qc:
+        st.warning(w)
+    m = st.columns(4)
+    m[0].metric("Mean P(Dementia)", f"{s['mean_p']:.3f}")
+    m[1].metric("Similarity to Dementia pattern", f"{res['score']:+.2f}",
+                help="Correlation between this scan's deviation from the CN mean and the CN − Dementia "
+                     "group difference. See Group comparison.")
+    m[2].metric("Voxel size (mm)", " × ".join(f"{v:.2f}" for v in subj.spacing))
+    m[3].metric("Protocol group", subj.protocol,
+                help="slice1.2: 1.2 mm left-right spacing (ADNI-1 style); iso1.0: 1.0 mm or finer.")
+    left, right = st.columns([3, 2], gap="large")
     with left:
-        st.markdown("##### Output per training seed")
-        st.dataframe(
-            df, hide_index=True, width="stretch",
-            column_config={
-                "seed": st.column_config.NumberColumn("Seed", format="%d"),
-                "P(Dementia)": st.column_config.ProgressColumn("P(Dementia)", min_value=0, max_value=1, format="%.3f"),
-                "threshold": st.column_config.NumberColumn("Threshold", format="%.3f",
-                                                           help="Chosen on the validation set (Youden's J)"),
-                "call": st.column_config.TextColumn("Call")})
-        st.markdown("<p class='note'>Each seed's probability is compared with that seed's own threshold, "
-                    "chosen on the validation set (Youden's J), as in the paper. The headline is the "
-                    "majority vote.</p>", unsafe_allow_html=True)
+        st.dataframe(df, hide_index=True, use_container_width=True, column_config={
+            "seed": st.column_config.NumberColumn("Seed", format="%d"),
+            "P(Dementia)": st.column_config.ProgressColumn("P(Dementia)", min_value=0, max_value=1, format="%.3f"),
+            "threshold": st.column_config.NumberColumn("Threshold", format="%.3f",
+                                                       help="Chosen on the ADNI validation set (Youden's J)."),
+            "call": st.column_config.TextColumn("Call")})
+        st.markdown("<p class='note'>Each seed is compared with its own validation threshold; the output "
+                    "is the majority vote.</p>", unsafe_allow_html=True)
     with right:
-        st.markdown("##### Spherical tensor")
-        st.markdown(f"Shape **{' × '.join(map(str, T.shape))}** (elevation φ × azimuth θ × radius r)")
         buf = io.BytesIO()
-        np.save(buf, T)
-        st.download_button("Download tensor (.npy)", buf.getvalue(),
-                           file_name=f"{subj.name}_spherical_36x72x48.npy", width="stretch")
-        st.download_button("Download per-seed output (.csv)",
-                           df.assign(model=model, weights=weights).to_csv(index=False),
-                           file_name=f"{subj.name}_{model}_{weights}.csv", width="stretch")
+        np.save(buf, Tn)
+        st.download_button("Download spherical tensor (.npy)", buf.getvalue(), "spherical_tensor_36x72x48.npy",
+                           use_container_width=True)
+        st.download_button("Download model output (.csv)", df.to_csv(index=False), "model_output.csv",
+                           use_container_width=True)
+        st.markdown(f"<p class='note'>Processed in {subj.seconds:.1f} s on {P.DEVICE.type.upper()}.</p>",
+                    unsafe_allow_html=True)
 
-with tab_rays:
-    c1, c2, c3 = st.columns([2, 2, 1])
-    density = {"sparse": 6, "medium": 3, "dense": 2}
-    step = density[c1.select_slider("Ray density", options=list(density), value="medium")]
+# Group comparison
+with tabs[1]:
+    st.markdown(f"This scan against the ADNI training groups of the same protocol ({subj.protocol}).")
+    f = st.columns([2, 5])[0].select_slider("Shell (r / R_edge)", SHELLS, value=0.3, key="cmp_r")
+    show("group", viz.group_maps, Tn, ref, subj.protocol, f=f)
+    c1, c2 = st.columns([3, 2], gap="large")
+    with c1:
+        show("score", viz.score_plot, ref, res["score"])
+    with c2:
+        st.markdown(f"**Similarity to the Dementia pattern: {res['score']:+.2f}**")
+        st.markdown(f"<p class='note'>Correlation between this scan's z-score map and the group effect map, "
+                    f"over the cells where the groups differ (|d| ≥ {P.D_MIN}). Curves: ADNI validation "
+                    f"participants (not used for the group means); on its own this score separates them "
+                    f"with AUC {float(ref.data['score_auc']):.2f}. Descriptive only.</p>", unsafe_allow_html=True)
+    st.markdown("**On this brain**")
+    show("anatomy", viz.anatomy_effects, geo, ref.d, res["z"])
+
+# Grad-CAM
+with tabs[2]:
+    if is_tf:
+        st.warning("Spherical Transformer Grad-CAM has no radial resolution and was unstable across seeds in "
+                   "the paper; it is shown for completeness and should not be interpreted.")
+    st.markdown("Regions that increase the Dementia output, averaged over the selected seeds.")
+    show("cam_rays", viz.cam_rays, cam, geo, transformer=is_tf)
+    show("cam_slices", viz.cam_slices, cam, geo)
+    show("cam_shells", viz.cam_shells, cam, geo)
+
+# Rays
+with tabs[3]:
+    c1, c2, c3 = st.columns([2, 3, 1.4])
+    density = {"Sparse": 6, "Medium": 3, "Dense": 2}
+    step = density[c1.select_slider("Rays shown", list(density), value="Medium")]
     planes = c2.multiselect("Slices", ["axial", "coronal", "sagittal"], default=["axial", "sagittal"])
-    edge = c3.toggle("Edge surface", value=True)
-    st.plotly_chart(viz.rays_3d(geo, step, planes, edge), use_container_width=True,
+    edge = c3.checkbox("Edge surface", value=True)
+    st.plotly_chart(viz.rays_3d(geo, DARK, step, planes, edge), use_container_width=True,
                     config={"displaylogo": False})
-    st.markdown("<p class='note'>Drag to rotate, scroll to zoom. Rays start at the subject's own centre "
-                "of mass and end at the smoothed, direction-specific brain edge R<sub>edge</sub>; "
-                "each ray is sampled at 48 fractions of its length.</p>", unsafe_allow_html=True)
-    st.markdown("##### On the subject's slices")
-    st.pyplot(viz.slices(geo, mode="rays"), width="stretch")
-    with st.expander("What the network sees: the tensor's samples drawn back into the brain"):
-        st.pyplot(viz.slices(geo, T, mode="tensor"), width="stretch")
+    show("rays2d", viz.slices, geo)
 
-with tab_shells:
-    c1, c2, c3 = st.columns([3, 2, 1])
-    radii = c1.multiselect("Shells (fraction of R_edge)", [0.3, 0.5, 0.7, 0.9, 1.0], default=[0.5, 0.9])
-    color = c2.radio("Colour", ["Intensity", "Grad-CAM"], horizontal=True, disabled=cam is None,
-                     help=None if cam is not None else "Switch on Grad-CAM in the sidebar")
-    cut = c3.toggle("Cut-away", value=True)
-    st.plotly_chart(viz.shells(T, geo, radii or [0.9], cam if color == "Grad-CAM" else None, cut),
-                    use_container_width=True, config={"displaylogo": False})
-    if cam is not None and model == "transformer":
-        st.caption("Transformer Grad-CAM has no radial resolution and was unstable across seeds in the "
-                   "paper (r ≈ 0.12); do not interpret it.")
+# Spherical tensor
+with tabs[4]:
+    show("tensor", viz.tensor_maps, Tn)
+    st.markdown("<p class='note'>Each map is one shell: elevation (inferior to superior) against azimuth "
+                "(right, anterior, left, posterior).</p>", unsafe_allow_html=True)
+    show("samples", lambda g, t, dark: viz.slices(g, dark, "tensor", t), geo, Tn)
 
-with tab_map:
-    c1, c2 = st.columns([4, 1])
-    k = c1.slider("Radius index (1 = centre, 48 = edge)", 1, T.shape[2], T.shape[2] // 2)
-    show_cam = c2.toggle("Grad-CAM overlay", value=cam is not None, disabled=cam is None)
-    st.pyplot(viz.unwrapped(T, k - 1, cam if show_cam else None), width="stretch")
-    st.pyplot(viz.radial_profiles(T, cam), width="content")
+# 3-D shells
+with tabs[5]:
+    c1, c2, c3 = st.columns([2, 3, 1.6])
+    kind = c1.selectbox("Colour", ["intensity", "gradcam", "deviation"],
+                        format_func={"intensity": "Intensity", "gradcam": "Grad-CAM",
+                                     "deviation": "Deviation from CN (z)"}.get)
+    radii = c2.multiselect("Shells (r / R_edge)", SHELLS + [1.0], default=[0.3, 0.5, 0.9])
+    cut = c3.checkbox("Cut away front-right", value=False)
+    vals = {"intensity": Tn, "gradcam": cam, "deviation": res["z"]}[kind]
+    st.plotly_chart(viz.shells_3d(vals, geo, DARK, radii or [0.9], kind, cut), use_container_width=True,
+                    config={"displaylogo": False})
 
-with tab_about:
-    st.markdown("""
-**Method.** Each skull-stripped T1 volume is bias-corrected (N4) and resampled to 1.2 mm. Rays are cast
-from the subject's own centre of mass in 36 × 72 directions to a smoothed, direction-specific brain edge
-and sampled at 48 fractions of their length, giving a 36 × 72 × 48 tensor. The representation replaces
-template registration: no subject is warped to an atlas. Two networks are trained on it: a 3-D CNN with
-circular padding in azimuth (72,001 parameters) and a Spherical Transformer over 648 radial-profile tokens
-(244,801 parameters), each with 5 training seeds.
+# About
+with tabs[6]:
+    st.markdown(f"""
+**Method.** The skull-stripped T1 volume is bias-corrected (N4) and resampled to 1.2 mm. Rays from the
+brain's centre of mass in 36 × 72 directions reach a smoothed, direction-specific brain edge and are sampled
+at 48 fractions of their length, giving a 36 × 72 × 48 tensor. No registration to a template is used.
 
-**Reproducibility.** The toolkit runs the repository's own preprocessing, transform and model code with
-the published weights. On ADNI test subjects it reproduces the paper's tensors bit for bit and its model
-probabilities to within 1e-7.
+**Models.** CNN3D (72,001 parameters) and Spherical Transformer (244,801), five training seeds each,
+trained on ADNI CN and Dementia participants. Weights: huggingface.co/{P.HF_REPO}.
 
-**Citation.** *Is template registration necessary? A subject-centred spherical representation of
-structural MRI for Alzheimer's disease classification* (citation to be added on publication). Data used in
-developing the models were obtained from the Alzheimer's Disease Neuroimaging Initiative (ADNI) database.
+**Group comparison.** Means and standard deviations of the ADNI training partition per acquisition protocol;
+group effect as protocol-adjusted Cohen's d (paper, Fig. 4). Only aggregate statistics are distributed.
+
+**Reproducibility.** The toolkit runs the repository's own preprocessing, transform and model code. On ADNI
+test subjects it reproduces the paper's tensors exactly and its model probabilities to within 1e-7.
+
+**Citation.** *Is template registration necessary? A subject-centred spherical representation of structural
+MRI for Alzheimer's disease classification* (citation to be added on publication). Data used in developing
+the models were obtained from the Alzheimer's Disease Neuroimaging Initiative (ADNI) database.
+
+{DISCLAIMER}
 """)
-    st.info(DISCLAIMER)

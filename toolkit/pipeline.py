@@ -170,6 +170,71 @@ def summarize(df: pd.DataFrame) -> dict:
     return {"call": call, "agree": agree, "n": n, "mean_p": float(df["P(Dementia)"].mean())}
 
 
+def scaled_cam(cam: np.ndarray) -> np.ndarray:
+    """Grad-CAM divided by its 99th percentile and clipped to [0, 1], the
+    scaling of the paper's Grad-CAM figures."""
+    q = float(np.percentile(cam, 99))
+    return np.clip(cam / q, 0, 1) if q > 0 else cam
+
+
+POLAR_DEG, TOP_RAYS = 75, 0.95            # as in gradcam.py (supplementary ray analysis)
+
+
+def ray_importance(cam: np.ndarray, phis: np.ndarray):
+    """Per-ray importance (mean over r, scaled to the 99th percentile of the
+    non-polar rays), the mask of non-polar rays, and the depth profile
+    (mean, SD over the top 5% of rays) of the 99th-percentile-scaled map."""
+    ok = np.broadcast_to((np.abs(np.degrees(phis)) <= POLAR_DEG)[:, None], cam.shape[:2])
+    ray = cam.mean(2)
+    q = np.percentile(ray[ok], 99)
+    ray = ray / q if q > 0 else ray
+    top = ok & (ray >= np.quantile(ray[ok], TOP_RAYS))
+    prof = (cam / max(float(np.percentile(cam, 99)), 1e-12))[top]
+    return ray, ok, prof.mean(0), prof.std(0)
+
+
+# ── comparison with the ADNI groups ──────────────────────────────────────────
+
+REFERENCE_FILE = Path(__file__).resolve().parent / "reference" / "adni_reference.npz"
+D_MIN = 0.15                              # cells with |d| below this are ignored (Fig. 4 caption)
+
+
+class Reference:
+    """Aggregate ADNI training statistics (toolkit/build_reference.py)."""
+
+    def __init__(self, data: dict):
+        self.data = data
+        self.d = np.asarray(data["d"], np.float64)
+        phis = (np.arange(self.d.shape[0]) + 0.5) / self.d.shape[0] * 180 - 90
+        polar_ok = (np.abs(phis) <= POLAR_DEG)[:, None, None]
+        self.mask = (np.abs(self.d) >= D_MIN) & polar_ok
+
+    @classmethod
+    def load(cls, path: Path = REFERENCE_FILE) -> "Reference":
+        with np.load(path) as z:
+            return cls({k: z[k] for k in z.files})
+
+    def mean(self, dx: str, protocol: str) -> np.ndarray:
+        return np.asarray(self.data[f"mean_{dx}_{protocol}"], np.float64)
+
+    def n(self, dx: str, protocol: str) -> int:
+        return int(self.data[f"n_{dx}_{protocol}"])
+
+    def deviation(self, T: np.ndarray, protocol: str) -> np.ndarray:
+        """z = (CN mean - scan) / CN SD, within the scan's protocol group.
+        Positive (red) = darker than CN, the direction of the Dementia effect."""
+        sd = np.maximum(np.asarray(self.data[f"sd_CN_{protocol}"], np.float64), 1e-3)
+        return (self.mean("CN", protocol) - T) / sd
+
+    def pattern_score(self, T: np.ndarray, protocol: str) -> float:
+        """Correlation, over the cells where the groups differ (|d| >= 0.15,
+        non-polar), between the scan's deviation from CN and the group
+        effect map d (CN - Dementia). Near 0: no resemblance; positive: the
+        scan departs from CN in the same places and direction as Dementia."""
+        z, m = self.deviation(T, protocol)[self.mask], self.d[self.mask]
+        return float(np.corrcoef(z, m)[0, 1])
+
+
 def gradcam(T: np.ndarray, model: str, weights: str = "best", seeds=SEEDS) -> np.ndarray:
     """Grad-CAM of the Dementia logit on the spherical grid, each seed's map
     scaled to max 1, then averaged over seeds (as in the paper's group maps)."""

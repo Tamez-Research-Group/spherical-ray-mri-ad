@@ -25,7 +25,7 @@ Each skull-stripped T1-weighted MRI is resampled along rays cast from the subjec
 | `run_experiments.ps1` | Runs every training configuration and seed, then `evaluate.py` | — |
 | `notebooks/results.ipynb`, `notebooks/registration_comparison.ipynb` | Figures and tables of the paper, computed from `results/` and the training runs | §3 |
 | `results/` | Aggregate results reported in the paper (no per-subject data) | §3 |
-| `toolkit/` | Local web app and CLI: upload a skull-stripped T1, see rays, shells and Grad-CAM, get each model's output ([toolkit/README.md](toolkit/README.md)) | — |
+| `toolkit/` | Research toolkit, a local web app and CLI: one skull-stripped T1 → rays, spherical tensor, model output, comparison with the ADNI groups, Grad-CAM ([toolkit/README.md](toolkit/README.md)) | Data availability |
 
 Trained weights for every configuration and seed (safetensors, best-epoch and top-5 averaged) are at
 <https://huggingface.co/lalodeavilaarm/adni-spherical-classification>.
@@ -48,7 +48,7 @@ pip install -r toolkit/requirements.txt
 python toolkit/app.py            # opens http://localhost:8501
 ```
 
-Upload a skull-stripped T1 NIfTI and choose CNN3D or the Spherical Transformer. The app shows the rays in 3-D, the spherical shells, the per-seed model output and, optionally, Grad-CAM. It runs locally and is for research use only; see [toolkit/README.md](toolkit/README.md).
+Choose a skull-stripped T1 NIfTI (or the synthetic phantom), a model, and press Analyze. The app shows the spherical representation, the model output per seed, the scan compared with the ADNI CN and Dementia groups, and Grad-CAM, using the paper's figure conventions. It runs locally and is for research use only; see [toolkit/README.md](toolkit/README.md).
 
 ## Reproducing the experiments
 
