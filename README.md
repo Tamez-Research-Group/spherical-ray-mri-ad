@@ -6,9 +6,9 @@ Each skull-stripped T1-weighted MRI is resampled along rays cast from the subjec
 
 ## Research toolkit
 
-![Walkthrough of the research toolkit on the synthetic phantom](docs/toolkit_demo.gif)
+![Walkthrough of the research toolkit on the MNI152 template](docs/toolkit_demo.gif)
 
-The repository includes a local web app that runs the whole pipeline on one skull-stripped T1 scan. It shows the rays and the spherical representation, the model output, the scan compared with the ADNI groups, and where the model looked (Grad-CAM). The walkthrough above uses the built-in synthetic phantom, so it contains no participant data. To run it yourself, see [Trying the pipeline on your own scan](#trying-the-pipeline-on-your-own-scan) and [toolkit/README.md](toolkit/README.md).
+The repository includes a local web app that runs the whole pipeline on one skull-stripped T1 scan. It shows the rays and the spherical representation, the model output, the scan compared with the ADNI groups, and where the model looked (Grad-CAM). The walkthrough above uses the built-in MNI152 template, an average of 152 brains, so it contains no participant data. To run it yourself, see [Trying the pipeline on your own scan](#trying-the-pipeline-on-your-own-scan) and [toolkit/README.md](toolkit/README.md).
 
 ## Contents
 

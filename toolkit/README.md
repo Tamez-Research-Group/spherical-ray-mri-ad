@@ -1,6 +1,6 @@
 # Spherical-ray MRI toolkit
 
-![Walkthrough of the toolkit on the synthetic phantom](../docs/toolkit_demo.gif)
+![Walkthrough of the toolkit on the MNI152 template](../docs/toolkit_demo.gif)
 
 A local web application and command-line tool that apply the paper's pipeline to one skull-stripped T1-weighted MRI:
 
