@@ -230,8 +230,8 @@ with tabs[0]:
     m = st.columns(4)
     m[0].metric("Mean P(Dementia)", f"{s['mean_p']:.3f}")
     m[1].metric("Similarity to Dementia pattern", f"{res['score']:+.2f}",
-                help="Correlation between this scan's deviation from the CN mean and the CN − Dementia "
-                     "group difference. See Group comparison.")
+                help="How much this scan's differences from a normal brain look like the typical dementia "
+                     "pattern (0: not at all; positive: similar). Details in Group comparison.")
     m[2].metric("Voxel size (mm)", " × ".join(f"{v:.2f}" for v in subj.spacing))
     m[3].metric("Protocol group", subj.protocol,
                 help="slice1.2: 1.2 mm left-right spacing (ADNI-1 style); iso1.0: 1.0 mm or finer.")
@@ -265,10 +265,14 @@ with tabs[1]:
         show("score", viz.score_plot, ref, res["score"])
     with c2:
         st.markdown(f"**Similarity to the Dementia pattern: {res['score']:+.2f}**")
-        st.markdown(f"<p class='note'>Correlation between this scan's z-score map and the group effect map, "
-                    f"over the cells where the groups differ (|d| ≥ {P.D_MIN}). Curves: ADNI validation "
-                    f"participants (not used for the group means); on its own this score separates them "
-                    f"with AUC {float(ref.data['score_auc']):.2f}. Descriptive only.</p>", unsafe_allow_html=True)
+        st.markdown(
+            "<p class='note'>Does this scan differ from a normal brain in the same places, and in the same "
+            "direction, as dementia brains typically do? Near 0: no resemblance. Positive: it resembles the "
+            "dementia pattern. Negative: the opposite.</p>"
+            "<p class='note'>Curves: where this number falls for ADNI participants who were not used to build "
+            f"the group averages (blue CN, red Dementia). On them it separates the two groups with an AUC of "
+            f"{float(ref.data['score_auc']):.2f}. A visual aid, not the model's decision.</p>",
+            unsafe_allow_html=True)
     st.markdown("**On this brain**")
     show("anatomy", viz.anatomy_effects, geo, ref.d, res["z"])
 
