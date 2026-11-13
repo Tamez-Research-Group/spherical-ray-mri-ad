@@ -57,14 +57,28 @@ DISCLAIMER = "Research use only. Not a medical device; the output is not a diagn
 
 # ── theme ────────────────────────────────────────────────────────────────────
 
-if "dark" not in st.session_state:
-    st.session_state.dark = st.query_params.get("theme") == "dark"
+# View settings live in session state so they survive the rerun that applies a theme change
+# (Streamlit forgets the state of widgets that were not drawn in the interrupted run).
+VIEW_DEFAULTS = {"dark": st.query_params.get("theme") == "dark", "section_ctl": "Summary",
+                 "views_mode": "anatomy", "rays_colour": "Plain", "rays_density": "Medium",
+                 "rays_planes": ["axial", "sagittal"], "rays_edge": True, "shell_kind": "intensity",
+                 "shell_radii": [0.3, 0.5, 0.9], "shell_cut": False, "cmp_r": 0.3}
+for _k, _v in VIEW_DEFAULTS.items():
+    st.session_state[_k] = st.session_state.get(_k, _v)
+
+
+def _set_theme():
+    """Called by the Dark mode switch before the page is redrawn, so the new
+    theme applies in the same run. (Streamlit's theme option is server-wide;
+    this is a single-user local app.)"""
+    want = "dark" if st.session_state.dark else "light"
+    st._config.set_option("theme.base", want)
+    st.query_params["theme"] = want
 
 
 def _apply_theme():
-    """The theme is sent to the browser when a run starts, so a change takes
-    effect after one rerun. (Streamlit's theme option is server-wide; this is a
-    single-user local app.)"""
+    """On first load (e.g. ?theme=dark) the theme may differ from the server's;
+    one rerun applies it before any widget has been used."""
     want = "dark" if st.session_state.dark else "light"
     st.query_params["theme"] = want
     if st._config.get_option("theme.base") != want:
@@ -144,7 +158,7 @@ def figure(name, fn, *args, caption=None, info=None, widths=(1, 10, 1), **params
 
 with st.sidebar:
     st.markdown("**Spherical-ray MRI**")
-    st.toggle("Dark mode", key="dark")
+    st.toggle("Dark mode", key="dark", on_change=_set_theme)
     source = st.radio("Input", list(SOURCES), format_func=SOURCES.get,
                       help="The phantom and the MNI152 template are examples with no participant data.")
     with st.form("setup", border=False):
@@ -304,7 +318,7 @@ def heading(title, info=None):
 
 
 SECTIONS = ["Summary", "Comparison with ADNI groups", "Rays and attention", "3-D shells", "About"]
-sec = st.segmented_control("Section", SECTIONS, default=SECTIONS[0], key="section_ctl",
+sec = st.segmented_control("Section", SECTIONS, key="section_ctl",
                            label_visibility="collapsed")
 if sec is None:                                   # clicking the active option deselects it
     sec = st.session_state.get("last_section", SECTIONS[0])
@@ -351,7 +365,7 @@ if sec == "Summary":
 elif sec == "Comparison with ADNI groups":
     heading(f"This scan next to the ADNI groups (protocol {subj.protocol})")
     f = st.columns([1, 3, 1])[1].select_slider("Depth of the shell (fraction of the way to the edge)", SHELLS,
-                                               value=0.3, key="cmp_r")
+                                               key="cmp_r")
     figure("group", viz.group_maps, Tn, ref, subj.protocol, f=f,
            caption="Top: normal and dementia averages beside this scan. Bottom: the typical dementia pattern "
                    "beside this scan's difference from normal (red: darker than normal).",
@@ -362,7 +376,7 @@ elif sec == "Comparison with ADNI groups":
            info=INFO["score"].format(auc=float(ref.data["score_auc"])))
     heading("On this brain")
     with st.columns([1, 10, 1])[1]:
-        mode = st.segmented_control("Show", list(viz.THREE_VIEW_MODES), default="anatomy",
+        mode = st.segmented_control("Show", list(viz.THREE_VIEW_MODES),
                                     format_func=viz.THREE_VIEW_MODES.get, key="views_mode",
                                     label_visibility="collapsed") or "anatomy"
     figure(f"views-{mode}", lambda dark: viz.three_views(geo, mode, dark, d=ref.d, z=res["z"], T=Tn),
@@ -375,14 +389,14 @@ elif sec == "Comparison with ADNI groups":
 elif sec == "Rays and attention":
     heading("Rays from the centre of the brain", INFO["rays"])
     c0, c1, c2, c3 = st.columns([2.2, 1.8, 2.6, 1.3], vertical_alignment="bottom")
-    colour = c0.segmented_control("Colour", ["Plain", "Model attention"], default="Plain",
+    colour = c0.segmented_control("Colour", ["Plain", "Model attention"],
                                   key="rays_colour") or "Plain"
     attention = colour == "Model attention"
     density = {"Sparse": 6, "Medium": 3, "Dense": 2}
-    step = density[c1.select_slider("Number of rays", list(density), value="Medium", key="rays_density")]
-    planes = c2.multiselect("Slices", ["axial", "coronal", "sagittal"], default=["axial", "sagittal"],
+    step = density[c1.select_slider("Number of rays", list(density), key="rays_density")]
+    planes = c2.multiselect("Slices", ["axial", "coronal", "sagittal"],
                             key="rays_planes")
-    edge = c3.checkbox("Brain edge", value=True, key="rays_edge")
+    edge = c3.checkbox("Brain edge", key="rays_edge")
     if attention and is_tf:
         st.caption("Spherical Transformer attention was unstable across training runs in the paper; "
                    "interpret with caution.")
@@ -407,9 +421,9 @@ elif sec == "3-D shells":
     kind = c1.selectbox("Colour", ["intensity", "gradcam", "deviation"], key="shell_kind",
                         format_func={"intensity": "Image intensity", "gradcam": "Model attention",
                                      "deviation": "Difference from normal"}.get)
-    radii = c2.multiselect("Shells (fraction of the way to the edge)", SHELLS + [1.0], default=[0.3, 0.5, 0.9],
+    radii = c2.multiselect("Shells (fraction of the way to the edge)", SHELLS + [1.0],
                            key="shell_radii")
-    cut = c3.checkbox("Cut away front-right", value=False, key="shell_cut")
+    cut = c3.checkbox("Cut away front-right", key="shell_cut")
     vals = {"intensity": Tn, "gradcam": cam, "deviation": res["z"]}[kind]
     st.plotly_chart(viz.shells_3d(vals, geo, DARK, radii or [0.9], kind, cut), use_container_width=True,
                     config={"displaylogo": False})

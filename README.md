@@ -4,6 +4,12 @@ Code accompanying the manuscript submitted to *Computerized Medical Imaging and 
 
 Each skull-stripped T1-weighted MRI is resampled along rays cast from the subject's own centre of mass. The rays end at a smoothed, direction-specific brain edge and give a 36 × 72 × 48 tensor (polar angle × azimuth × radius). This tensor stands in for template registration. Two deep networks are trained on it to separate cognitively normal (CN) from Dementia participants in ADNI: a 3-D CNN with circular padding in azimuth, and a Spherical Transformer over radial-profile tokens. They are compared with PCA-based classifiers, with an ANTs affine/SyN registration reference, and with a native-space Cartesian volume.
 
+## Research toolkit
+
+![Walkthrough of the research toolkit on the synthetic phantom](docs/toolkit_demo.gif)
+
+The repository includes a local web app that runs the whole pipeline on one skull-stripped T1 scan. It shows the rays and the spherical representation, the model output, the scan compared with the ADNI groups, and where the model looked (Grad-CAM). The walkthrough above uses the built-in synthetic phantom, so it contains no participant data. To run it yourself, see [Trying the pipeline on your own scan](#trying-the-pipeline-on-your-own-scan) and [toolkit/README.md](toolkit/README.md).
+
 ## Contents
 
 | Path | Purpose | Manuscript |
