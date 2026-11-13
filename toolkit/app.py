@@ -44,6 +44,7 @@ import numpy as np          # noqa: E402
 import pandas as pd         # noqa: E402
 import streamlit as st      # noqa: E402
 
+import examples             # noqa: E402
 import pipeline as P        # noqa: E402
 import viz                  # noqa: E402
 
@@ -65,6 +66,12 @@ DISCLAIMER = (
     "1.0–1.2 mm MPRAGE, HD-BET skull stripping). They have never seen MCI or other conditions, and "
     "their behaviour on other scanners, protocols or populations is unknown.")
 MODEL_LABEL = {"cnn": "CNN3D", "transformer": "Spherical Transformer"}
+EXAMPLES = {"none": "—", "phantom": "Synthetic phantom", "mni152": "MNI152 template (average brain)"}
+EXAMPLE_NOTE = (
+    "**Example input, not a real scan.** The pipeline (rays, shells, tensor) works on it, but the "
+    "**model output is meaningless**: the models only know real ADNI scans, and these examples are far "
+    "outside that distribution. In our tests the CNN3D called the phantom *Dementia* and the template *CN* "
+    "with near certainty, which shows why outputs outside the training distribution cannot be trusted.")
 WEIGHT_LABEL = {"best": "Best epoch (primary)", "avg": "Top-5 checkpoint average"}
 
 
@@ -77,6 +84,12 @@ def process_bytes(data: bytes, name: str):
         p = Path(d) / f"{name.removesuffix('.gz').removesuffix('.nii')}{suffix}"
         p.write_bytes(data)
         return P.process(p)
+
+
+@st.cache_data(show_spinner=False, max_entries=12)
+def example_bytes(kind: str, atrophy: float) -> bytes:
+    img = examples.phantom(atrophy) if kind == "phantom" else examples.mni152()
+    return img.to_bytes()
 
 
 @st.cache_data(show_spinner=False, max_entries=16)
@@ -96,6 +109,13 @@ with st.sidebar:
     st.caption("Registration-free spherical representation of structural MRI")
     up = st.file_uploader("Skull-stripped T1 (NIfTI)", type=["nii", "gz"],
                           help="A skull-stripped T1-weighted volume with zero background, e.g. HD-BET output.")
+    example = None
+    if up is None:
+        example = st.selectbox("…or try an example", list(EXAMPLES), format_func=EXAMPLES.get,
+                               help="No real participant data: a synthetic phantom or the MNI152 average template.")
+        atrophy = (st.slider("Phantom atrophy", 0.0, 1.0, 0.0, 0.1,
+                             help="Enlarges ventricles and sulci and thins the cortex")
+                   if example == "phantom" else 0.0)
     st.divider()
     model = st.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get)
     weights = st.radio("Weights", list(WEIGHT_LABEL), format_func=WEIGHT_LABEL.get)
@@ -111,14 +131,16 @@ seeds = P.SEEDS if seed_opt == "all" else (int(seed_opt),)
 st.title("Spherical-ray MRI toolkit")
 
 preload = os.environ.get("SPHERICAL_TOOLKIT_INPUT")      # optional: open this file at start
-if up is None and preload and Path(preload).exists():
-    data, up_name = Path(preload).read_bytes(), Path(preload).name
-elif up is not None:
+if up is not None:
     data, up_name = up.getvalue(), up.name
+elif example in ("phantom", "mni152"):
+    data, up_name = example_bytes(example, atrophy), f"example_{example}.nii"
+elif preload and Path(preload).exists():
+    data, up_name = Path(preload).read_bytes(), Path(preload).name
 else:
     st.markdown(
-        "Upload a **skull-stripped T1-weighted NIfTI** in the sidebar. The toolkit runs the paper's "
-        "pipeline (no registration to a template):")
+        "Upload a **skull-stripped T1-weighted NIfTI** in the sidebar, or pick an example. The toolkit runs "
+        "the paper's pipeline (no registration to a template):")
     c1, c2, c3, c4 = st.columns(4)
     c1.markdown("**1 · Harmonize**  \nN4 bias-field correction, 1.2 mm isotropic resampling")
     c2.markdown("**2 · Cast rays**  \nfrom the subject's centre of mass to the smoothed brain edge")
@@ -155,6 +177,8 @@ m1.metric("Mean P(Dementia)", f"{s['mean_p']:.3f}")
 m2.metric("Seeds voting Dementia", f"{int((df['call'] == 'Dementia').sum())} / {len(df)}")
 m3.metric("Voxel size (mm)", " × ".join(f"{v:.2f}" for v in subj.spacing))
 m4.metric("Processing", f"{subj.seconds:.1f} s", P.DEVICE.type.upper(), delta_color="off")
+if up is None and example in ("phantom", "mni152"):
+    st.warning(EXAMPLE_NOTE, icon="🧪")
 for w in subj.qc:
     st.warning(w, icon="⚠️")
 if subj.protocol == "slice1.2":

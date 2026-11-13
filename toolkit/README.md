@@ -47,6 +47,22 @@ The app is built with [Streamlit](https://streamlit.io). `python toolkit/app.py`
 | About | Method summary and citation |
 | 3-D shells | Interactive shells at chosen fractions of R_edge, coloured by intensity or Grad-CAM, with an optional cut-away |
 
+## No scan at hand? Examples
+
+The sidebar offers two examples that contain no participant data:
+
+- **Synthetic phantom.** A T1-like, skull-stripped brain generated from simple shapes (`toolkit/examples.py`): folded cortex with sulci, white matter, ventricles, deep grey matter, cerebellum and brainstem, with a bias field and noise. An *atrophy* slider enlarges the ventricles and sulci and thins the cortex, so you can watch the rays and shells respond.
+- **MNI152 template.** The MNI152 2009 average of 152 adult brains, which ships with nilearn, skull-stripped with its own mask.
+
+Both are useful for exploring the representation, but **the model output on them is meaningless**: they are far from the real ADNI scans the models were trained on. In our tests the CNN3D called the phantom Dementia and the template CN, both with near certainty. That is a reminder that out-of-distribution outputs can't be trusted.
+
+To write either example to a file, for instance to try the command-line tool:
+
+```bash
+python toolkit/examples.py phantom --out phantom.nii.gz --atrophy 0.6
+python toolkit/examples.py mni152 --out mni152_brain.nii.gz
+```
+
 ## Command line
 
 ```bash
