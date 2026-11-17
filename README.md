@@ -25,13 +25,16 @@ The repository includes a local web app that runs the whole pipeline on one skul
 | `evaluate_demographics.py` | Test AUC by sex and age tertile; protocol by ADNI phase | §2.8 |
 | `preprocessing/register.py` | ANTs affine and SyN to MNI152 2009 (registration reference), Harvard–Oxford regional volumes | §2.9 |
 | `preprocessing/native_volume.py` | Native-space Cartesian volume baseline (no registration) | §2.9 |
+| `evaluate_equivalence.py` | Post hoc equivalence tests (TOST, margin ±0.05 AUC, Holm) for the deep-network comparisons | §2.9 |
+| `evaluate_registration_fidelity.py` | Exploratory: spherical vs registered inputs by registration fidelity | §2.9, Table S3 |
 | `preprocessing/benchmark_timing.py` | Per-subject preprocessing time | §2.10 |
 | `gradcam.py` | Grad-CAM group maps (supplementary) | Suppl. |
 | `figures_spherical.py` | Method figures (rays, group-effect map, edge diagnostics) | Figs. 1, 4, S |
 | `run_experiments.ps1` | Runs every training configuration and seed, then `evaluate.py` | — |
 | `notebooks/results.ipynb`, `notebooks/registration_comparison.ipynb` | Figures and tables of the paper, computed from `results/` and the training runs | §3 |
 | `results/` | Aggregate results reported in the paper (no per-subject data) | §3 |
-| `toolkit/` | Research toolkit, a local web app and CLI: one skull-stripped T1 → rays, spherical tensor, model output, comparison with the ADNI groups, Grad-CAM ([toolkit/README.md](toolkit/README.md)) | Data availability |
+| `toolkit/` | Research toolkit, a local web app and CLI: one skull-stripped T1 → rays, spherical tensor, model output, comparison with the ADNI groups, Grad-CAM ([toolkit/README.md](toolkit/README.md)) | §2.11 |
+| `toolkit/validate_toolkit.py`, `evaluate_similarity.py`, `figure_toolkit.py` | Toolkit validation against the study (test set), test AUC of the similarity score, toolkit figure | §3.7 |
 
 Trained weights for every configuration and seed (safetensors, best-epoch and top-5 averaged) are at
 <https://huggingface.co/lalodeavilaarm/adni-spherical-classification>.

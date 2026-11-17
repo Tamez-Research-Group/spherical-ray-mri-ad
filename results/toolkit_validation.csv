@@ -1,0 +1,7 @@
+check,n_subjects,identical,max_abs_diff,median_abs_diff
+spherical tensor vs study cache,254,254.0,0.0,0.0
+"P(Dementia) cnn best, 5 seeds vs training runs",254,254.0,1.412719726756606e-07,2.6210498813017402e-08
+"P(Dementia) cnn avg, 5 seeds vs training runs",254,254.0,1.4646759027847622e-07,2.6738777164636574e-08
+"P(Dementia) transformer best, 5 seeds vs training runs",254,254.0,5.899040603662975e-06,2.5686349870018832e-08
+"P(Dementia) transformer avg, 5 seeds vs training runs",254,254.0,5.186517181399175e-06,1.9622039826305837e-08
+"processing time per subject (s), median",254,,25.034872900000096,3.7251318999999796
