@@ -1,6 +1,8 @@
-# Is template registration necessary? A subject-centred spherical representation of structural MRI for Alzheimer's disease classification
+# Classifying Alzheimer's disease without template registration: a subject-centred spherical representation of structural MRI
 
-Code accompanying the manuscript submitted to *Computerized Medical Imaging and Graphics* (citation to be added on publication).
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24490319.svg)](https://doi.org/10.5281/zenodo.24490319)
+
+Code accompanying the manuscript submitted to *NeuroImage* (article citation to be added on publication). To cite the code, use the archived release: de Avila-Armenta E. et al., *spherical-ray-mri-ad* v1.0.0, Zenodo, [doi:10.5281/zenodo.24490319](https://doi.org/10.5281/zenodo.24490319) (see [CITATION.cff](CITATION.cff)).
 
 Each skull-stripped T1-weighted MRI is resampled along rays cast from the subject's own centre of mass. The rays end at a smoothed, direction-specific brain edge and give a 36 × 72 × 48 tensor (polar angle × azimuth × radius). This tensor stands in for template registration. Two deep networks are trained on it to separate cognitively normal (CN) from Dementia participants in ADNI: a 3-D CNN with circular padding in azimuth, and a Spherical Transformer over radial-profile tokens. They are compared with PCA-based classifiers, with an ANTs affine/SyN registration reference, and with a native-space Cartesian volume.
 
