@@ -10,7 +10,9 @@ representation (Methods Section 2.3, Fig. 1; Results, Fig. 4).
                     protocol and averaged; (a-d) elevation x azimuth maps at
                     four fractional radii, (e-g) the same effect sizes placed
                     back at their sample positions in the axial, coronal and
-                    sagittal planes through the example subject's centre.
+                    sagittal planes through the example subject's centre,
+                    (h-i) on three nested shells in 3-D (r = 0.3, 0.6, 0.9),
+                    with the quadrant facing the viewer cut away.
   backprojection    (Supplementary) MRI with rays and R_edge, and the tensor
                     values at their sample positions, in the three planes.
   edge_diagnostics  (Supplementary) accuracy of R_edge: true brain edge, R_edge
@@ -210,12 +212,58 @@ def slice_panel(ax, geo, view, mode="effect", d=None, T=None, anatomy=True):
     ax.set_ylabel(f"{b0} ← → {b1}", labelpad=2)
 
 
+SHELL_RADII = (0.3, 0.6, 0.9)      # nested shells of panels (h-i)
+SHELL_VIEWS = ((45, "right-anterior"), (225, "left-posterior"))   # (azimuth of the viewer, deg)
+
+
+def effect_shells_3d(ax, d, geo, view_azim, radii=SHELL_RADII, elev=22):
+    """Cohen's d on nested tensor shells in 3-D, at their sample positions in
+    the example subject. The quadrant of directions facing the viewer is cut
+    away so the inner shells are visible. All quads go into one collection,
+    so they are depth-sorted together (matplotlib sorts per collection)."""
+    P, c = geo["points"], geo["com"]
+    thetas = geo["thetas"]
+    a = np.radians(view_azim)
+    facing = np.cos(thetas - a) > np.cos(np.radians(45))            # azimuths within 45 deg of the viewer
+    n_r = d.shape[2]
+    cmap, norm = mpl.cm.RdBu_r, mpl.colors.Normalize(-D_LIM, D_LIM)
+    quads, cols = [], []
+    for f in radii:
+        k = int(round(f * n_r)) - 1
+        S = np.concatenate([P[:, :, k], P[:, :, k][:, :1]], axis=1)  # theta is periodic: close the shell
+        C = d[:, :, k]
+        for i in range(S.shape[0] - 1):
+            for j in range(S.shape[1] - 1):
+                if facing[j % len(thetas)]:
+                    continue
+                quads.append([S[i, j], S[i + 1, j], S[i + 1, j + 1], S[i, j + 1]])
+                cols.append(C[i, j % len(thetas)])
+    pc = Poly3DCollection(np.array(quads), facecolors=cmap(norm(np.array(cols))),
+                          edgecolor="none", linewidth=0, antialiased=False)
+    ax.add_collection3d(pc)
+    q = np.array(quads).reshape(-1, 3) - c
+    half = np.abs(q).max()
+    ax.set_xlim(c[0] - half, c[0] + half), ax.set_ylim(c[1] - half, c[1] + half), ax.set_zlim(c[2] - half, c[2] + half)
+    ax.set_box_aspect((1, 1, 1), zoom=1.75)
+    ax.set_axis_off()
+    ax.view_init(elev=elev, azim=view_azim)
+    # direction letters just outside the shells, on the side facing the viewer
+    far = 0.98 * half
+    side = (("R", (1, 0, 0)), ("L", (-1, 0, 0)), ("A", (0, 1, 0)), ("P", (0, -1, 0)))
+    for lab, v in side:
+        if np.cos(np.arctan2(v[1], v[0]) - a) > 0:                  # visible side only
+            ax.text(*(c + far * np.array(v)), lab, color=INK_2, ha="center", va="center", fontweight="bold")
+
+
 def group_effect_map(d, T, geo, out="group_effect_map"):
     n_phi, n_theta, n_r = T.shape
-    H = 128 * MM
+    H0, H3 = 128 * MM, 66 * MM                           # panels (a-g), then the 3-D row (h-i)
+    H = H0 + H3
+    yy = lambda y: (y * H0 + H3) / H                       # (a-g) keep their layout above the new row
+    hh = lambda h: h * H0 / H
     fig = plt.figure(figsize=(COL2, H))
     w, gap, x0 = 0.19, 0.03, 0.06
-    top = [fig.add_axes([x0 + i * (w + gap), 0.62, w, 0.33]) for i in range(4)]
+    top = [fig.add_axes([x0 + i * (w + gap), yy(0.62), w, hh(0.33)]) for i in range(4)]
     for i, (ax, r) in enumerate(zip(top, RADII)):
         k = int(round(r * n_r)) - 1
         im = ax.imshow(d[:, :, k], origin="lower", cmap="RdBu_r", vmin=-D_LIM, vmax=D_LIM,
@@ -226,11 +274,11 @@ def group_effect_map(d, T, geo, out="group_effect_map"):
         if i == 0:
             ax.set_ylabel("Elevation φ")
         panel(fig, ax, "abcd"[i], f"r = {r} R$_{{edge}}$")
-    cax = fig.add_axes([x0 + 4 * (w + gap) - gap + 0.012, 0.62, 0.012, 0.33])
+    cax = fig.add_axes([x0 + 4 * (w + gap) - gap + 0.012, yy(0.62), 0.012, hh(0.33)])
     fig.colorbar(im, cax=cax).set_label("Cohen's d (CN − Dementia)\nred: lower in Dementia")
 
     s = 0.265                                              # square slice panels
-    bottom = [fig.add_axes([x0 + i * (s + 0.035), 0.04, s, s * COL2 / H]) for i in range(3)]
+    bottom = [fig.add_axes([x0 + i * (s + 0.035), yy(0.04), s, s * COL2 / H]) for i in range(3)]
     for ax, view, letter in zip(bottom, VIEWS, "efg"):
         slice_panel(ax, geo, view, "effect", d=d)
         panel(fig, ax, letter, f"{VIEWS[view][3]}, effect size on anatomy")
@@ -240,6 +288,13 @@ def group_effect_map(d, T, geo, out="group_effect_map"):
     cb = fig.colorbar(sm, cax=cax2)
     cb.set_label("Cohen's d (CN − Dementia)")
     cb.set_ticks([-1, -0.5, 0, 0.5, 1])                    # same ticks as the colour bar of (a-d)
+
+    w3, h3 = 0.42, (H3 - 6 * MM) / H                       # (h-i): nested shells in 3-D
+    shells = [fig.add_axes([x0 + i * (w3 + 0.06), 0.015, w3, h3], projection="3d") for i in range(2)]
+    rr = ", ".join(str(r) for r in SHELL_RADII)
+    for i, (ax, (azim, name)) in enumerate(zip(shells, SHELL_VIEWS)):
+        effect_shells_3d(ax, d, geo, azim)
+        label(fig, x0 + i * (w3 + 0.06), h3 + 0.004, "hi"[i], f"Shells at r = {rr} R$_{{edge}}$, {name} view")
     save(fig, out)
     plt.close(fig)
 
